@@ -8,7 +8,7 @@ import os
 # -------------------------
 # CONFIG
 # -------------------------
-st.set_page_config(page_title="Flyer Generator", layout="centered")
+st.set_page_config(page_title="Flyer Generator", layout="wide")
 
 BASE_DIR = os.path.dirname(__file__)
 TEMPLATE_PATH = os.path.join(BASE_DIR, "master_template.png")
@@ -16,7 +16,7 @@ LOGO_DIR = os.path.join(BASE_DIR, "logos")
 FONT_DIR = os.path.join(BASE_DIR, "fonts")
 
 # -------------------------
-# LOAD FONTS (cached)
+# LOAD FONTS
 # -------------------------
 @st.cache_resource
 def load_fonts():
@@ -28,50 +28,11 @@ def load_fonts():
 fonts = load_fonts()
 
 # -------------------------
-# UI
-# -------------------------
-st.title("AJAX Training Flyer Generator")
-
-with st.form("flyer_form"):
-    st.subheader("Event Details")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        location = st.text_input("Location", "SES - Detroit")
-        date = st.text_input("Date", "Tuesday, May 12th")
-        address1 = st.text_input("Address Line 1", "25181 Dequindre Rd")
-
-    with col2:
-        time = st.text_input("Time", "10:00 AM - 3:00 PM")
-        address2 = st.text_input("Address Line 2", "Madison Heights, MI 48071")
-
-    st.subheader("Partner")
-
-    partner = st.selectbox(
-        "Partner",
-        ["ADI", "Advantage", "APD", "ENS", "Lonestar",
-         "Mountain West", "SDS", "SDI", "SES", "SS&SI", "Wesco", "Custom"]
-    )
-
-    custom_logo_url = ""
-    if partner == "Custom":
-        custom_logo_url = st.text_input("Custom Logo URL")
-
-    registration_link = st.text_input(
-        "Registration Link",
-        "https://forms.gle/27N37sA1TrrJAEwDA"
-    )
-
-    submitted = st.form_submit_button("Generate Flyer")
-
-# -------------------------
 # CORE FUNCTION
 # -------------------------
-def generate_flyer():
+def generate_flyer(data):
     if not os.path.exists(TEMPLATE_PATH):
-        st.error("Template image not found.")
-        return None
+        return None, "Template image not found."
 
     try:
         img = Image.open(TEMPLATE_PATH).convert("RGB")
@@ -82,12 +43,12 @@ def generate_flyer():
         tx, ty = 130, 545
         qx, qy = 812, 1308
 
-        # Text rendering
-        draw.text((tx, ty), date, font=fonts["bold"], fill=white)
-        draw.text((tx, ty + 50), time, font=fonts["regular"], fill=gray)
-        draw.text((tx, ty + 110), location, font=fonts["bold"], fill=white)
-        draw.text((tx, ty + 160), address1, font=fonts["regular"], fill=white)
-        draw.text((tx, ty + 200), address2, font=fonts["regular"], fill=white)
+        # TEXT
+        draw.text((tx, ty), data["date"], font=fonts["bold"], fill=white)
+        draw.text((tx, ty + 50), data["time"], font=fonts["regular"], fill=gray)
+        draw.text((tx, ty + 110), data["location"], font=fonts["bold"], fill=white)
+        draw.text((tx, ty + 160), data["address1"], font=fonts["regular"], fill=white)
+        draw.text((tx, ty + 200), data["address2"], font=fonts["regular"], fill=white)
 
         # -------------------------
         # LOGO HANDLING
@@ -95,18 +56,22 @@ def generate_flyer():
         logo_img = None
 
         try:
-            if partner == "Custom" and custom_logo_url:
-                r = requests.get(custom_logo_url, timeout=5)
+            # Upload takes priority (best UX)
+            if data["uploaded_logo"] is not None:
+                logo_img = Image.open(data["uploaded_logo"]).convert("RGBA")
+
+            elif data["partner"] == "Custom" and data["custom_logo_url"]:
+                r = requests.get(data["custom_logo_url"], timeout=5)
                 r.raise_for_status()
                 logo_img = Image.open(BytesIO(r.content)).convert("RGBA")
 
-            elif partner != "Custom":
-                logo_path = os.path.join(LOGO_DIR, f"{partner.lower()}_logo.png")
+            elif data["partner"] != "Custom":
+                logo_path = os.path.join(LOGO_DIR, f"{data['partner'].lower()}_logo.png")
                 if os.path.exists(logo_path):
                     logo_img = Image.open(logo_path).convert("RGBA")
 
-        except Exception as e:
-            st.warning("Logo could not be loaded.")
+        except Exception:
+            pass
 
         if logo_img:
             logo_img.thumbnail((350, 100), Image.Resampling.LANCZOS)
@@ -117,37 +82,112 @@ def generate_flyer():
             )
 
         # -------------------------
-        # QR CODE
+        # QR
         # -------------------------
-        qr_img = qrcode.make(registration_link).resize((150, 150)).convert("RGB")
+        qr_img = qrcode.make(data["registration_link"]).resize((150, 150)).convert("RGB")
         img.paste(qr_img, (qx, qy))
 
         # -------------------------
-        # EXPORT TO MEMORY
+        # OUTPUT
         # -------------------------
         buffer = BytesIO()
         img.save(buffer, format="PNG")
         buffer.seek(0)
 
-        return buffer
+        return buffer, None
 
     except Exception as e:
-        st.error("Something went wrong while generating the flyer.")
-        return None
+        return None, "Error generating flyer."
 
 # -------------------------
-# RUN
+# UI LAYOUT
+# -------------------------
+st.title("AJAX Training Flyer Generator")
+
+# Two-column layout: form (left) + preview (right)
+col_form, col_preview = st.columns([1, 1])
+
+with col_form:
+    with st.form("flyer_form"):
+
+        # -------------------------
+        # ROW 1: NAME / LOCATION
+        # -------------------------
+        location = st.text_input("Location / Name", "SES - Detroit")
+
+        # -------------------------
+        # ROW 2: ADDRESS
+        # -------------------------
+        col_a1, col_a2 = st.columns(2)
+        with col_a1:
+            address1 = st.text_input("Address Line 1", "25181 Dequindre Rd")
+        with col_a2:
+            address2 = st.text_input("Address Line 2", "Madison Heights, MI 48071")
+
+        # -------------------------
+        # ROW 3: DATE / TIME / PARTNER
+        # -------------------------
+        col_d, col_t, col_p = st.columns(3)
+
+        with col_d:
+            date = st.text_input("Date", "Tuesday, May 12th")
+        with col_t:
+            time = st.text_input("Time", "10:00 AM - 3:00 PM")
+        with col_p:
+            partner = st.selectbox(
+                "Partner",
+                ["ADI", "Advantage", "APD", "ENS", "Lonestar",
+                 "Mountain West", "SDS", "SDI", "SES", "SS&SI", "Wesco", "Custom"]
+            )
+
+        # -------------------------
+        # CUSTOM LOGO OPTIONS
+        # -------------------------
+        st.markdown("**Custom Logo (optional)**")
+
+        uploaded_logo = st.file_uploader("Upload Logo", type=["png", "jpg", "jpeg"])
+        custom_logo_url = st.text_input("or Logo URL")
+
+        # -------------------------
+        # LINK
+        # -------------------------
+        registration_link = st.text_input(
+            "Registration Link",
+            "https://forms.gle/27N37sA1TrrJAEwDA"
+        )
+
+        submitted = st.form_submit_button("Generate Flyer")
+
+# -------------------------
+# HANDLE SUBMISSION
 # -------------------------
 if submitted:
+    data = {
+        "location": location,
+        "address1": address1,
+        "address2": address2,
+        "date": date,
+        "time": time,
+        "partner": partner,
+        "custom_logo_url": custom_logo_url,
+        "uploaded_logo": uploaded_logo,
+        "registration_link": registration_link,
+    }
+
     with st.spinner("Generating flyer..."):
-        result = generate_flyer()
+        result, error = generate_flyer(data)
 
-    if result:
-        st.success("Flyer ready!")
+    if error:
+        st.error(error)
+    else:
+        # PREVIEW
+        with col_preview:
+            st.subheader("Preview")
+            st.image(result)
 
-        st.download_button(
-            label="Download Flyer",
-            data=result,
-            file_name="Final_Flyer.png",
-            mime="image/png"
-        )
+            st.download_button(
+                "Download Flyer",
+                data=result,
+                file_name="Final_Flyer.png",
+                mime="image/png"
+            )
