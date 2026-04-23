@@ -96,8 +96,8 @@ def generate_flyer(data):
         qr_img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
 
         # Resize to fit your layout better
-        qr_img = qr_img.resize((180, 180), Image.Resampling.LANCZOS)
-        img.paste(qr_img, (int(qx - (qr_img.width / 2)), int(qy - (qr_img.height / 2))))
+        qr_img = qr_img.resize((145, 145), Image.Resampling.LANCZOS)
+        img.paste(qr_img, (qx - (qr_img.width // 2), qy - (qr_img.height // 2)))
 
         # -------------------------
         # OUTPUT
@@ -108,8 +108,8 @@ def generate_flyer(data):
 
         return buffer, None
 
-    except Exception:
-        return None, "Error generating flyer."
+    except Exception as e:
+        return None, "Error generating flyer: " + str(e)
 
 # -------------------------
 # MOBILE FRIENDLY CSS
@@ -207,7 +207,7 @@ if generate:
 
             # Download button FIRST
             st.download_button(
-                "⬇️ Download Flyer",
+                "⬇️ Download",
                 data=result,
                 file_name="Final_Flyer.png",
                 mime="image/png"
