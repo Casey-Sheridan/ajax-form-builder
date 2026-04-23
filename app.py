@@ -87,7 +87,7 @@ def generate_flyer(data):
             )
 
         # -------------------------
-        # QR CODE (improved)
+        # QR CODE (140x140, centered)
         # -------------------------
         qr = qrcode.QRCode(
             version=None,
@@ -101,9 +101,8 @@ def generate_flyer(data):
 
         qr_img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
 
-        qr_img = qr_img.resize((200, 200), Image.Resampling.LANCZOS)
+        qr_img = qr_img.resize((140, 140), Image.Resampling.LANCZOS)
 
-        # Centered placement
         img.paste(
             qr_img,
             (
@@ -125,12 +124,12 @@ def generate_flyer(data):
         return None, "Error generating flyer: " + str(e)
 
 # -------------------------
-# STYLE (fix top spacing)
+# STYLE
 # -------------------------
 st.markdown("""
 <style>
 .block-container {
-    padding-top: 0.75rem !important;
+    padding-top: 0.5rem !important;
     padding-bottom: 1rem;
 }
 h1 {
@@ -182,7 +181,15 @@ with col_form:
         "https://forms.gle/27N37sA1TrrJAEwDA"
     )
 
-    generate = st.button("Generate Flyer")
+    col_btn1, col_btn2 = st.columns(2)
+
+    with col_btn1:
+        generate = st.button("Generate Flyer")
+
+    with col_btn2:
+        if st.button("Reset"):
+            st.session_state.flyer_result = None
+            st.rerun()
 
 # -------------------------
 # GENERATE
