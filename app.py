@@ -99,7 +99,7 @@ def generate_flyer(data):
         return None, "Error generating flyer."
 
 # -------------------------
-# RESPONSIVE STYLE
+# MOBILE FRIENDLY CSS
 # -------------------------
 st.markdown("""
 <style>
@@ -120,18 +120,14 @@ col_form, col_preview = st.columns([1, 1])
 
 with col_form:
 
-    # -------------------------
-    # PARTNER (OUTSIDE FORM)
-    # -------------------------
+    # Partner selector (reactive)
     partner = st.selectbox(
         "Partner",
         ["ADI", "Advantage", "APD", "ENS", "Lonestar",
          "Mountain West", "SDS", "SDI", "SES", "SS&SI", "Wesco", "Custom"]
     )
 
-    # -------------------------
-    # CONDITIONAL CUSTOM LOGO
-    # -------------------------
+    # Conditional custom logo
     uploaded_logo = None
     custom_logo_url = ""
 
@@ -140,48 +136,37 @@ with col_form:
 
         uploaded_logo = st.file_uploader(
             "Upload Logo",
-            type=["png", "jpg", "jpeg"],
-            key="logo_upload"
+            type=["png", "jpg", "jpeg"]
         )
 
-        custom_logo_url = st.text_input(
-            "or Logo URL",
-            key="logo_url"
-        )
+        custom_logo_url = st.text_input("or Logo URL")
 
-    # -------------------------
-    # FORM
-    # -------------------------
-    with st.form("flyer_form"):
+    # Inputs
+    location = st.text_input("Location / Name", "SES - Detroit")
 
-        # Row 1
-        location = st.text_input("Location / Name", "SES - Detroit")
+    col_a1, col_a2 = st.columns(2)
+    with col_a1:
+        address1 = st.text_input("Address Line 1", "25181 Dequindre Rd")
+    with col_a2:
+        address2 = st.text_input("Address Line 2", "Madison Heights, MI 48071")
 
-        # Row 2
-        col_a1, col_a2 = st.columns(2)
-        with col_a1:
-            address1 = st.text_input("Address Line 1", "25181 Dequindre Rd")
-        with col_a2:
-            address2 = st.text_input("Address Line 2", "Madison Heights, MI 48071")
+    col_d, col_t = st.columns(2)
+    with col_d:
+        date = st.text_input("Date", "Tuesday, May 12th")
+    with col_t:
+        time = st.text_input("Time", "10:00 AM - 3:00 PM")
 
-        # Row 3
-        col_d, col_t = st.columns(2)
-        with col_d:
-            date = st.text_input("Date", "Tuesday, May 12th")
-        with col_t:
-            time = st.text_input("Time", "10:00 AM - 3:00 PM")
+    registration_link = st.text_input(
+        "Registration Link",
+        "https://forms.gle/27N37sA1TrrJAEwDA"
+    )
 
-        registration_link = st.text_input(
-            "Registration Link",
-            "https://forms.gle/27N37sA1TrrJAEwDA"
-        )
-
-        submitted = st.form_submit_button("Generate Flyer")
+    generate = st.button("Generate Flyer")
 
 # -------------------------
-# HANDLE SUBMISSION
+# GENERATE + PREVIEW
 # -------------------------
-if submitted:
+if generate:
 
     if partner == "Custom" and not (uploaded_logo or custom_logo_url):
         st.error("Please upload a logo or provide a URL for custom partners.")
@@ -208,7 +193,7 @@ if submitted:
         with col_preview:
             st.subheader("Preview")
 
-            # DOWNLOAD BUTTON AT TOP
+            # Download button FIRST
             st.download_button(
                 "⬇️ Download Flyer",
                 data=result,
@@ -216,7 +201,5 @@ if submitted:
                 mime="image/png"
             )
 
-            st.markdown("---")
-
-            # RESPONSIVE IMAGE
-            st.image(result, use_container_width=True)
+            # Smaller preview (better for laptops)
+            st.image(result, width=400)
