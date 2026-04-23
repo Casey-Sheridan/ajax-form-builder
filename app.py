@@ -99,6 +99,19 @@ def generate_flyer(data):
         return None, "Error generating flyer."
 
 # -------------------------
+# RESPONSIVE STYLE
+# -------------------------
+st.markdown("""
+<style>
+@media (max-width: 768px) {
+    .block-container {
+        padding-top: 1rem;
+    }
+}
+</style>
+""", unsafe_allow_html=True)
+
+# -------------------------
 # UI
 # -------------------------
 st.title("AJAX Training Flyer Generator")
@@ -106,6 +119,39 @@ st.title("AJAX Training Flyer Generator")
 col_form, col_preview = st.columns([1, 1])
 
 with col_form:
+
+    # -------------------------
+    # PARTNER (OUTSIDE FORM)
+    # -------------------------
+    partner = st.selectbox(
+        "Partner",
+        ["ADI", "Advantage", "APD", "ENS", "Lonestar",
+         "Mountain West", "SDS", "SDI", "SES", "SS&SI", "Wesco", "Custom"]
+    )
+
+    # -------------------------
+    # CONDITIONAL CUSTOM LOGO
+    # -------------------------
+    uploaded_logo = None
+    custom_logo_url = ""
+
+    if partner == "Custom":
+        st.markdown("**Custom Logo (required)**")
+
+        uploaded_logo = st.file_uploader(
+            "Upload Logo",
+            type=["png", "jpg", "jpeg"],
+            key="logo_upload"
+        )
+
+        custom_logo_url = st.text_input(
+            "or Logo URL",
+            key="logo_url"
+        )
+
+    # -------------------------
+    # FORM
+    # -------------------------
     with st.form("flyer_form"):
 
         # Row 1
@@ -119,41 +165,12 @@ with col_form:
             address2 = st.text_input("Address Line 2", "Madison Heights, MI 48071")
 
         # Row 3
-        col_d, col_t, col_p = st.columns(3)
+        col_d, col_t = st.columns(2)
         with col_d:
             date = st.text_input("Date", "Tuesday, May 12th")
         with col_t:
             time = st.text_input("Time", "10:00 AM - 3:00 PM")
-        with col_p:
-            partner = st.selectbox(
-                "Partner",
-                ["ADI", "Advantage", "APD", "ENS", "Lone Star",
-                 "Mountain West", "SDS", "SDI", "SES", "SS&SI", "Wesco", "Custom"]
-            )
 
-        # -------------------------
-        # CONDITIONAL CUSTOM LOGO
-        # -------------------------
-        uploaded_logo = None
-        custom_logo_url = ""
-
-        if partner == "Custom":
-            st.markdown("**Custom Logo (required)**")
-
-            uploaded_logo = st.file_uploader(
-                "Upload Logo",
-                type=["png", "jpg", "jpeg"],
-                key="logo_uploader"
-            )
-
-            custom_logo_url = st.text_input(
-                "or Logo URL",
-                key="logo_url"
-            )
-
-        # -------------------------
-        # LINK
-        # -------------------------
         registration_link = st.text_input(
             "Registration Link",
             "https://forms.gle/27N37sA1TrrJAEwDA"
@@ -162,11 +179,10 @@ with col_form:
         submitted = st.form_submit_button("Generate Flyer")
 
 # -------------------------
-# SUBMIT HANDLER
+# HANDLE SUBMISSION
 # -------------------------
 if submitted:
 
-    # Validate custom logo requirement
     if partner == "Custom" and not (uploaded_logo or custom_logo_url):
         st.error("Please upload a logo or provide a URL for custom partners.")
         st.stop()
@@ -191,11 +207,16 @@ if submitted:
     else:
         with col_preview:
             st.subheader("Preview")
-            st.image(result)
 
+            # DOWNLOAD BUTTON AT TOP
             st.download_button(
-                "Download Flyer",
+                "⬇️ Download Flyer",
                 data=result,
                 file_name="Final_Flyer.png",
                 mime="image/png"
             )
+
+            st.markdown("---")
+
+            # RESPONSIVE IMAGE
+            st.image(result, use_container_width=True)
