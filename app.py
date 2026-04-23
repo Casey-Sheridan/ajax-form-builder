@@ -14,6 +14,7 @@ BASE_DIR = os.path.dirname(__file__)
 TEMPLATE_PATH = os.path.join(BASE_DIR, "master_template.png")
 LOGO_DIR = os.path.join(BASE_DIR, "logos")
 FONT_DIR = os.path.join(BASE_DIR, "fonts")
+PARTNERS_FILE = os.path.join(BASE_DIR, "partners.txt")
 
 # -------------------------
 # SESSION STATE
@@ -32,6 +33,19 @@ def load_fonts():
     }
 
 fonts = load_fonts()
+
+# -------------------------
+# LOAD PARTNERS
+# -------------------------
+@st.cache_data
+def load_partners():
+    if not os.path.exists(PARTNERS_FILE):
+        return ["Custom"]
+
+    with open(PARTNERS_FILE, "r") as f:
+        partners = [line.strip() for line in f if line.strip()]
+
+    return partners + ["Custom"]
 
 # -------------------------
 # CORE FUNCTION
@@ -148,11 +162,9 @@ col_form, col_preview = st.columns([1, 1])
 
 with col_form:
 
-    partner = st.selectbox(
-        "Partner",
-        ["ADI", "Advantage", "APD", "ENS", "Lonestar",
-         "Mountain West", "SDS", "SDI", "SES", "SS&SI", "Wesco", "Custom"]
-    )
+    partner_list = load_partners()
+
+    partner = st.selectbox("Partner", partner_list)
 
     uploaded_logo = None
     custom_logo_url = ""
