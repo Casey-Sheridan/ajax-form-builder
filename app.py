@@ -56,7 +56,6 @@ def generate_flyer(data):
         logo_img = None
 
         try:
-            # Upload takes priority (best UX)
             if data["uploaded_logo"] is not None:
                 logo_img = Image.open(data["uploaded_logo"]).convert("RGBA")
 
@@ -96,39 +95,31 @@ def generate_flyer(data):
 
         return buffer, None
 
-    except Exception as e:
+    except Exception:
         return None, "Error generating flyer."
 
 # -------------------------
-# UI LAYOUT
+# UI
 # -------------------------
 st.title("AJAX Training Flyer Generator")
 
-# Two-column layout: form (left) + preview (right)
 col_form, col_preview = st.columns([1, 1])
 
 with col_form:
     with st.form("flyer_form"):
 
-        # -------------------------
-        # ROW 1: NAME / LOCATION
-        # -------------------------
+        # Row 1
         location = st.text_input("Location / Name", "SES - Detroit")
 
-        # -------------------------
-        # ROW 2: ADDRESS
-        # -------------------------
+        # Row 2
         col_a1, col_a2 = st.columns(2)
         with col_a1:
             address1 = st.text_input("Address Line 1", "25181 Dequindre Rd")
         with col_a2:
             address2 = st.text_input("Address Line 2", "Madison Heights, MI 48071")
 
-        # -------------------------
-        # ROW 3: DATE / TIME / PARTNER
-        # -------------------------
+        # Row 3
         col_d, col_t, col_p = st.columns(3)
-
         with col_d:
             date = st.text_input("Date", "Tuesday, May 12th")
         with col_t:
@@ -141,20 +132,24 @@ with col_form:
             )
 
         # -------------------------
-        # CUSTOM LOGO OPTIONS
+        # CONDITIONAL CUSTOM LOGO
         # -------------------------
         uploaded_logo = None
         custom_logo_url = ""
 
         if partner == "Custom":
-            st.markdown("**Custom Logo**")
+            st.markdown("**Custom Logo (required)**")
 
             uploaded_logo = st.file_uploader(
                 "Upload Logo",
-                type=["png", "jpg", "jpeg"]
+                type=["png", "jpg", "jpeg"],
+                key="logo_uploader"
             )
 
-            custom_logo_url = st.text_input("or Logo URL")
+            custom_logo_url = st.text_input(
+                "or Logo URL",
+                key="logo_url"
+            )
 
         # -------------------------
         # LINK
@@ -167,9 +162,15 @@ with col_form:
         submitted = st.form_submit_button("Generate Flyer")
 
 # -------------------------
-# HANDLE SUBMISSION
+# SUBMIT HANDLER
 # -------------------------
 if submitted:
+
+    # Validate custom logo requirement
+    if partner == "Custom" and not (uploaded_logo or custom_logo_url):
+        st.error("Please upload a logo or provide a URL for custom partners.")
+        st.stop()
+
     data = {
         "location": location,
         "address1": address1,
@@ -177,8 +178,8 @@ if submitted:
         "date": date,
         "time": time,
         "partner": partner,
-        "custom_logo_url": custom_logo_url,
         "uploaded_logo": uploaded_logo,
+        "custom_logo_url": custom_logo_url,
         "registration_link": registration_link,
     }
 
@@ -188,7 +189,6 @@ if submitted:
     if error:
         st.error(error)
     else:
-        # PREVIEW
         with col_preview:
             st.subheader("Preview")
             st.image(result)
