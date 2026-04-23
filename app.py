@@ -97,7 +97,7 @@ def generate_flyer(data):
 
         # Resize to fit your layout better
         qr_img = qr_img.resize((180, 180), Image.Resampling.LANCZOS)
-        img.paste(qr_img, (qx - (qr_img.width / 2), qy - (qr_img.height / 2)))
+        img.paste(qr_img, (int(qx - (qr_img.width / 2)), int(qy - (qr_img.height / 2))))
 
         # -------------------------
         # OUTPUT
