@@ -143,10 +143,18 @@ with col_form:
         # -------------------------
         # CUSTOM LOGO OPTIONS
         # -------------------------
-        st.markdown("**Custom Logo (optional)**")
+        uploaded_logo = None
+        custom_logo_url = ""
 
-        uploaded_logo = st.file_uploader("Upload Logo", type=["png", "jpg", "jpeg"])
-        custom_logo_url = st.text_input("or Logo URL")
+        if partner == "Custom":
+            st.markdown("**Custom Logo**")
+
+            uploaded_logo = st.file_uploader(
+                "Upload Logo",
+                type=["png", "jpg", "jpeg"]
+            )
+
+            custom_logo_url = st.text_input("or Logo URL")
 
         # -------------------------
         # LINK
