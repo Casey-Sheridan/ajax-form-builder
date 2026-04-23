@@ -41,7 +41,7 @@ def generate_flyer(data):
         white, gray = (255, 255, 255), (180, 180, 180)
 
         tx, ty = 130, 545
-        qx, qy = 885, 1378
+        qx, qy = 887, 1380
 
         # TEXT
         draw.text((tx, ty), data["date"], font=fonts["bold"], fill=white)
