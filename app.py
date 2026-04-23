@@ -65,7 +65,7 @@ def generate_flyer(data):
                 logo_img = Image.open(BytesIO(r.content)).convert("RGBA")
 
             elif data["partner"] != "Custom":
-                logo_path = os.path.join(LOGO_DIR, f"{data['partner'].lower()}_logo.png")
+                logo_path = os.path.join(LOGO_DIR, f"{data['partner'].lower()}.png")
                 if os.path.exists(logo_path):
                     logo_img = Image.open(logo_path).convert("RGBA")
 
@@ -127,7 +127,7 @@ with col_form:
         with col_p:
             partner = st.selectbox(
                 "Partner",
-                ["ADI", "Advantage", "APD", "ENS", "Lonestar",
+                ["ADI", "Advantage", "APD", "ENS", "Lone Star",
                  "Mountain West", "SDS", "SDI", "SES", "SS&SI", "Wesco", "Custom"]
             )
 
