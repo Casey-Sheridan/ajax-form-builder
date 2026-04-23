@@ -16,6 +16,12 @@ LOGO_DIR = os.path.join(BASE_DIR, "logos")
 FONT_DIR = os.path.join(BASE_DIR, "fonts")
 
 # -------------------------
+# SESSION STATE
+# -------------------------
+if "flyer_result" not in st.session_state:
+    st.session_state.flyer_result = None
+
+# -------------------------
 # LOAD FONTS
 # -------------------------
 @st.cache_resource
@@ -41,7 +47,7 @@ def generate_flyer(data):
         white, gray = (255, 255, 255), (180, 180, 180)
 
         tx, ty = 130, 545
-        qx, qy = 887, 1380
+        qx, qy = 887, 1381  # center point
 
         # TEXT
         draw.text((tx, ty), data["date"], font=fonts["bold"], fill=white)
@@ -51,7 +57,7 @@ def generate_flyer(data):
         draw.text((tx, ty + 200), data["address2"], font=fonts["regular"], fill=white)
 
         # -------------------------
-        # LOGO HANDLING
+        # LOGO
         # -------------------------
         logo_img = None
 
@@ -81,13 +87,13 @@ def generate_flyer(data):
             )
 
         # -------------------------
-        # QR
+        # QR CODE (improved)
         # -------------------------
         qr = qrcode.QRCode(
-            version=None,  # auto size
+            version=None,
             error_correction=qrcode.constants.ERROR_CORRECT_Q,
-            box_size=10,   # controls resolution
-            border=1       # 🔥 THIS removes most whitespace
+            box_size=10,
+            border=1
         )
 
         qr.add_data(data["registration_link"])
@@ -95,9 +101,16 @@ def generate_flyer(data):
 
         qr_img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
 
-        # Resize to fit your layout better
-        qr_img = qr_img.resize((145, 145), Image.Resampling.LANCZOS)
-        img.paste(qr_img, (qx - (qr_img.width // 2), qy - (qr_img.height // 2)))
+        qr_img = qr_img.resize((200, 200), Image.Resampling.LANCZOS)
+
+        # Centered placement
+        img.paste(
+            qr_img,
+            (
+                qx - qr_img.width // 2,
+                qy - qr_img.height // 2
+            )
+        )
 
         # -------------------------
         # OUTPUT
@@ -112,14 +125,17 @@ def generate_flyer(data):
         return None, "Error generating flyer: " + str(e)
 
 # -------------------------
-# MOBILE FRIENDLY CSS
+# STYLE (fix top spacing)
 # -------------------------
 st.markdown("""
 <style>
-@media (max-width: 768px) {
-    .block-container {
-        padding-top: 1rem;
-    }
+.block-container {
+    padding-top: 0.75rem !important;
+    padding-bottom: 1rem;
+}
+h1 {
+    margin-top: 0rem;
+    padding-top: 0rem;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -133,27 +149,20 @@ col_form, col_preview = st.columns([1, 1])
 
 with col_form:
 
-    # Partner selector (reactive)
     partner = st.selectbox(
         "Partner",
-        ["ADI", "Advantage", "APD", "ENS", "Lonestar", "Mountain West", "SDS", "SDI", "SES", "SS&SI", "Wesco", "Custom"]
+        ["ADI", "Advantage", "APD", "ENS", "Lonestar",
+         "Mountain West", "SDS", "SDI", "SES", "SS&SI", "Wesco", "Custom"]
     )
 
-    # Conditional custom logo
     uploaded_logo = None
     custom_logo_url = ""
 
     if partner == "Custom":
         st.markdown("**Custom Logo (required)**")
-
-        uploaded_logo = st.file_uploader(
-            "Upload Logo",
-            type=["png", "jpg", "jpeg"]
-        )
-
+        uploaded_logo = st.file_uploader("Upload Logo", type=["png", "jpg", "jpeg"])
         custom_logo_url = st.text_input("or Logo URL")
 
-    # Inputs
     location = st.text_input("Location / Name", "SES - Detroit")
 
     col_a1, col_a2 = st.columns(2)
@@ -176,7 +185,7 @@ with col_form:
     generate = st.button("Generate Flyer")
 
 # -------------------------
-# GENERATE + PREVIEW
+# GENERATE
 # -------------------------
 if generate:
 
@@ -202,16 +211,21 @@ if generate:
     if error:
         st.error(error)
     else:
-        with col_preview:
-            st.subheader("Preview")
+        st.session_state.flyer_result = result
 
-            # Download button FIRST
-            st.download_button(
-                "⬇️ Download",
-                data=result,
-                file_name="Final_Flyer.png",
-                mime="image/png"
-            )
+# -------------------------
+# PREVIEW (persistent)
+# -------------------------
+if st.session_state.flyer_result:
 
-            # Smaller preview (better for laptops)
-            st.image(result, width=400)
+    with col_preview:
+        st.subheader("Preview")
+
+        st.download_button(
+            "⬇️ Download",
+            data=st.session_state.flyer_result,
+            file_name="Final_Flyer.png",
+            mime="image/png"
+        )
+
+        st.image(st.session_state.flyer_result, width=400)
