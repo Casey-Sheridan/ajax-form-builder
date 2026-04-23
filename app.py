@@ -41,7 +41,7 @@ def generate_flyer(data):
         white, gray = (255, 255, 255), (180, 180, 180)
 
         tx, ty = 130, 545
-        qx, qy = 812, 1308
+        qx, qy = 890, 1381
 
         # TEXT
         draw.text((tx, ty), data["date"], font=fonts["bold"], fill=white)
@@ -96,8 +96,8 @@ def generate_flyer(data):
         qr_img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
 
         # Resize to fit your layout better
-        qr_img = qr_img.resize((220, 220), Image.Resampling.LANCZOS)
-        img.paste(qr_img, (qx, qy))
+        qr_img = qr_img.resize((180, 180), Image.Resampling.LANCZOS)
+        img.paste(qr_img, (qx - (qr_img.width/2), qy - (qr_img.height/2)))
 
         # -------------------------
         # OUTPUT
