@@ -93,7 +93,7 @@ def generate_flyer(data):
             pass
 
         if logo_img:
-            logo_img.thumbnail((350, 100), Image.Resampling.LANCZOS)
+            logo_img.thumbnail((350, 75), Image.Resampling.LANCZOS)
             img.paste(
                 logo_img,
                 (280, round(1450 - (logo_img.height / 2))),
