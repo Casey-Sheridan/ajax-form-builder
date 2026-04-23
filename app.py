@@ -83,7 +83,20 @@ def generate_flyer(data):
         # -------------------------
         # QR
         # -------------------------
-        qr_img = qrcode.make(data["registration_link"]).resize((150, 150)).convert("RGB")
+        qr = qrcode.QRCode(
+            version=None,  # auto size
+            error_correction=qrcode.constants.ERROR_CORRECT_Q,
+            box_size=10,   # controls resolution
+            border=1       # 🔥 THIS removes most whitespace
+        )
+
+        qr.add_data(data["registration_link"])
+        qr.make(fit=True)
+
+        qr_img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
+
+        # Resize to fit your layout better
+        qr_img = qr_img.resize((220, 220), Image.Resampling.LANCZOS)
         img.paste(qr_img, (qx, qy))
 
         # -------------------------
