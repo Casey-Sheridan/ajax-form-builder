@@ -228,6 +228,15 @@ st.markdown("""
 .download-link:hover {
     background-color: #e0e2e6;
 }
+
+.stDownloadButton * {
+    font-size: .8rem !important;
+}
+            
+.stDownloadButton Button {
+    min-height: .9rem;
+    width: inherit;       
+}
 </style>
 """, unsafe_allow_html=True)
 
