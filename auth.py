@@ -1,15 +1,13 @@
 import streamlit as st
+import os
 from authlib.integrations.requests_client import OAuth2Session
 
-from dotenv import load_dotenv
-import os
-
-load_dotenv()
-
+# -------------------------
+# ENV CONFIG
+# -------------------------
 CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
-
-REDIRECT_URI = "https://ajaxflyers.rotecode.com"
+REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8501")
 
 AUTHORIZATION_ENDPOINT = "https://accounts.google.com/o/oauth2/auth"
 TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
@@ -76,14 +74,14 @@ def _handle_callback():
         resp = oauth.get(USERINFO_ENDPOINT)
         user = resp.json()
 
-        # Domain restriction
         email = user.get("email", "")
+
         if not email.endswith(f"@{ALLOWED_DOMAIN}"):
             return "unauthorized"
 
         return user
 
-    except Exception as e:
+    except Exception:
         return None
 
 
@@ -92,15 +90,31 @@ def _handle_callback():
 # -------------------------
 def require_login():
     """
-    Call this at the TOP of your app.
-    Blocks execution until user is authenticated.
+    Call this at the top of app.py
     """
 
-    # Already logged in
+    # -------------------------
+    # LOCAL DEV BYPASS
+    # -------------------------
+    if os.getenv("AUTH_DISABLED") == "true":
+        if "user" not in st.session_state:
+            st.session_state["user"] = {
+                "email": "dev@ajax.systems",
+                "name": "Local Dev",
+                "picture": "https://via.placeholder.com/40"
+            }
+
+        # Optional visual indicator
+        st.sidebar.warning("Auth Disabled (Local Dev)")
+
+        return st.session_state["user"]
+
+    # -------------------------
+    # NORMAL AUTH FLOW
+    # -------------------------
     if "user" in st.session_state:
         return st.session_state["user"]
 
-    # Try handling OAuth callback
     result = _handle_callback()
 
     if result == "unauthorized":
@@ -112,7 +126,6 @@ def require_login():
         st.query_params.clear()
         st.rerun()
 
-    # Not logged in yet → show login
     st.title("Login Required")
     _login_link()
     st.stop()
