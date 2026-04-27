@@ -1,3 +1,7 @@
+import auth
+
+user = auth.require_login()
+
 import base64
 
 import streamlit as st
