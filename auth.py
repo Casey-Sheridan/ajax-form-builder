@@ -1,13 +1,16 @@
 import streamlit as st
 import os
 from authlib.integrations.requests_client import OAuth2Session
+from streamlit_cookies_manager import EncryptedCookieManager
 
 # -------------------------
-# ENV CONFIG
+# CONFIG
 # -------------------------
 CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8501")
+
+COOKIE_SECRET = os.getenv("COOKIE_SECRET", "dev_secret_change_me")
 
 AUTHORIZATION_ENDPOINT = "https://accounts.google.com/o/oauth2/auth"
 TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
@@ -15,6 +18,21 @@ USERINFO_ENDPOINT = "https://openidconnect.googleapis.com/v1/userinfo"
 
 SCOPE = "openid email profile"
 ALLOWED_DOMAIN = "ajax.systems"
+
+
+# -------------------------
+# COOKIE MANAGER
+# -------------------------
+def get_cookie_manager():
+    cookies = EncryptedCookieManager(
+        prefix="flyer_app_",
+        password=COOKIE_SECRET
+    )
+
+    if not cookies.ready():
+        st.stop()
+
+    return cookies
 
 
 # -------------------------
@@ -86,11 +104,11 @@ def _handle_callback():
 
 
 # -------------------------
-# MAIN ENTRY
+# MAIN AUTH ENTRY
 # -------------------------
 def require_login():
     """
-    Call this at the top of app.py
+    Call at top of app.py
     """
 
     # -------------------------
@@ -104,17 +122,27 @@ def require_login():
                 "picture": "https://via.placeholder.com/40"
             }
 
-        # Optional visual indicator
         st.sidebar.warning("Auth Disabled (Local Dev)")
-
         return st.session_state["user"]
 
     # -------------------------
-    # NORMAL AUTH FLOW
+    # COOKIE RESTORE
+    # -------------------------
+    cookies = get_cookie_manager()
+
+    if "user" not in st.session_state:
+        if "user" in cookies and cookies["user"]:
+            st.session_state["user"] = cookies["user"]
+
+    # -------------------------
+    # ALREADY LOGGED IN
     # -------------------------
     if "user" in st.session_state:
         return st.session_state["user"]
 
+    # -------------------------
+    # HANDLE OAUTH CALLBACK
+    # -------------------------
     result = _handle_callback()
 
     if result == "unauthorized":
@@ -123,9 +151,15 @@ def require_login():
 
     if result:
         st.session_state["user"] = result
+        cookies["user"] = result
+        cookies.save()
+
         st.query_params.clear()
         st.rerun()
 
+    # -------------------------
+    # SHOW LOGIN
+    # -------------------------
     st.title("Login Required")
     _login_link()
     st.stop()
@@ -135,6 +169,10 @@ def require_login():
 # LOGOUT
 # -------------------------
 def logout_button():
+    cookies = get_cookie_manager()
+
     if st.sidebar.button("Logout"):
         st.session_state.clear()
+        cookies["user"] = ""
+        cookies.save()
         st.rerun()
