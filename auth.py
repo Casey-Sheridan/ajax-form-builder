@@ -4,9 +4,6 @@ import json
 from authlib.integrations.requests_client import OAuth2Session
 from streamlit_cookies_manager import EncryptedCookieManager
 
-#from dotenv import load_dotenv
-#load_dotenv(override=True)
-
 # -------------------------
 # CONFIG
 # -------------------------
@@ -25,18 +22,16 @@ ALLOWED_DOMAIN = "ajax.systems"
 
 
 # -------------------------
-# COOKIE MANAGER
+# COOKIE MANAGER (SESSION-BASED)
 # -------------------------
 def get_cookie_manager():
-    cookies = EncryptedCookieManager(
-        prefix="flyer_app_",
-        password=COOKIE_SECRET
-    )
+    if "cookie_manager" not in st.session_state:
+        st.session_state["cookie_manager"] = EncryptedCookieManager(
+            prefix="flyer_app_",
+            password=COOKIE_SECRET
+        )
 
-    if not cookies.ready():
-        st.stop()
-
-    return cookies
+    return st.session_state["cookie_manager"]
 
 
 # -------------------------
@@ -51,7 +46,6 @@ def _login_link():
     )
 
     uri, state = oauth.create_authorization_url(AUTHORIZATION_ENDPOINT)
-
     st.session_state["oauth_state"] = state
 
     st.markdown(f"""
@@ -88,16 +82,10 @@ def _handle_callback():
     )
 
     try:
-        token = oauth.fetch_token(
-            TOKEN_ENDPOINT,
-            code=params["code"]
-        )
-
-        resp = oauth.get(USERINFO_ENDPOINT)
-        user = resp.json()
+        oauth.fetch_token(TOKEN_ENDPOINT, code=params["code"])
+        user = oauth.get(USERINFO_ENDPOINT).json()
 
         email = user.get("email", "")
-
         if not email.endswith(f"@{ALLOWED_DOMAIN}"):
             return "unauthorized"
 
@@ -111,9 +99,6 @@ def _handle_callback():
 # MAIN AUTH ENTRY
 # -------------------------
 def require_login():
-    """
-    Call at top of app.py
-    """
 
     # -------------------------
     # LOCAL DEV BYPASS
@@ -130,13 +115,22 @@ def require_login():
         return st.session_state["user"]
 
     # -------------------------
-    # COOKIE RESTORE
+    # INIT COOKIE MANAGER
     # -------------------------
     cookies = get_cookie_manager()
 
+    if not cookies.ready():
+        st.stop()
+
+    # -------------------------
+    # RESTORE FROM COOKIE
+    # -------------------------
     if "user" not in st.session_state:
         if "user" in cookies and cookies["user"]:
-            st.session_state["user"] = json.loads(cookies["user"])
+            try:
+                st.session_state["user"] = json.loads(cookies["user"])
+            except Exception:
+                pass
 
     # -------------------------
     # ALREADY LOGGED IN
@@ -162,7 +156,7 @@ def require_login():
         st.rerun()
 
     # -------------------------
-    # SHOW LOGIN
+    # LOGIN SCREEN
     # -------------------------
     st.title("Login Required")
     _login_link()
