@@ -8,7 +8,7 @@ from streamlit_cookies_manager import EncryptedCookieManager
 # -------------------------
 CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
-REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8501")
+REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "https://ajaxflyers.rotecode.com")
 
 COOKIE_SECRET = os.getenv("COOKIE_SECRET", "dev_secret_change_me")
 
