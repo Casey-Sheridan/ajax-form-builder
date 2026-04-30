@@ -88,7 +88,9 @@ def require_login():
     cookies = get_cookie_manager()
 
     if not cookies.ready():
-        st.stop()
+        st.markdown("Loading session...")
+        st.session_state["_cookie_init"] = True
+        st.rerun()
 
     # -------------------------
     # RESTORE FROM COOKIE
