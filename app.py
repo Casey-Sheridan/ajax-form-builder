@@ -20,16 +20,20 @@ user = auth.require_login()
 # -------------------------
 # SIDEBAR USER PANEL
 # -------------------------
-st.sidebar.image(user["picture"], width=60)
-st.sidebar.write(user["name"])
+st.sidebar.markdown("### 👤 User")
+
+st.sidebar.image(user["picture"], width=50)
+st.sidebar.markdown(f"**{user['name']}**")
 st.sidebar.caption(user["email"])
+
+st.sidebar.success("Authenticated")
+st.sidebar.divider()
 
 auth.logout_button()
 
 # -------------------------
 # CONFIG
 # -------------------------
-st.set_page_config(page_title="Flyer Generator", layout="wide")
 
 BASE_DIR = os.path.dirname(__file__)
 TEMPLATE_PATH = os.path.join(BASE_DIR, "master_template.png")
@@ -193,15 +197,25 @@ with col_form:
     prettydate = format_pretty_date(selected_date)
 
     # TIME PICKERS
-    times = [f"{h}:{m:02d} {'AM' if h < 12 else 'PM'}"
-             for h in range(1, 13)
-             for m in [0, 15, 30, 45]]
+    times = []
+
+    for hour in range(6, 22):  # 6 AM → 10 PM
+        for minute in [0, 30]:
+            h = hour
+            suffix = "AM" if h < 12 else "PM"
+
+            display_hour = h if 1 <= h <= 12 else (h - 12 if h > 12 else 12)
+
+            times.append(f"{display_hour}:{minute:02d} {suffix}")
+
+    # Add 10:00 PM explicitly (since range stops before 22:30)
+    times.append("10:00 PM")
 
     col_t1, col_t2 = st.columns(2)
     with col_t1:
-        start_time = st.selectbox("Start Time", times, index=4)
+        start_time = st.selectbox("Start Time", times, index=8)
     with col_t2:
-        end_time = st.selectbox("End Time", times, index=8)
+        end_time = st.selectbox("End Time", times, index=16)
 
     time_range = f"{start_time} - {end_time}"
 

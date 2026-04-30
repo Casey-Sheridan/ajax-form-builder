@@ -10,7 +10,6 @@ from streamlit_cookies_manager import EncryptedCookieManager
 CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI")
-
 COOKIE_SECRET = os.getenv("COOKIE_SECRET")
 
 AUTHORIZATION_ENDPOINT = "https://accounts.google.com/o/oauth2/auth"
@@ -30,38 +29,7 @@ def get_cookie_manager():
             prefix="flyer_app_",
             password=COOKIE_SECRET
         )
-
     return st.session_state["cookie_manager"]
-
-
-# -------------------------
-# LOGIN LINK
-# -------------------------
-def _login_link():
-    oauth = OAuth2Session(
-        CLIENT_ID,
-        CLIENT_SECRET,
-        scope=SCOPE,
-        redirect_uri=REDIRECT_URI
-    )
-
-    uri, state = oauth.create_authorization_url(AUTHORIZATION_ENDPOINT)
-    st.session_state["oauth_state"] = state
-
-    st.markdown(f"""
-    <a href="{uri}" target="_self"
-       style="
-            display:inline-block;
-            padding:8px 16px;
-            background:#4285F4;
-            color:white;
-            border-radius:6px;
-            text-decoration:none;
-            font-weight:500;
-       ">
-        Sign in with Google
-    </a>
-    """, unsafe_allow_html=True)
 
 
 # -------------------------
@@ -156,10 +124,32 @@ def require_login():
         st.rerun()
 
     # -------------------------
-    # LOGIN SCREEN
+    # AUTO-LOGIN (redirect)
     # -------------------------
-    st.title("Login Required")
-    _login_link()
+    oauth = OAuth2Session(
+        CLIENT_ID,
+        CLIENT_SECRET,
+        scope=SCOPE,
+        redirect_uri=REDIRECT_URI
+    )
+
+    uri, state = oauth.create_authorization_url(
+        AUTHORIZATION_ENDPOINT,
+        prompt="consent"
+    )
+
+    st.session_state["oauth_state"] = state
+
+    # redirect
+    st.markdown(
+        f'<meta http-equiv="refresh" content="0; url={uri}">',
+        unsafe_allow_html=True
+    )
+
+    # fallback
+    st.markdown("Redirecting to login...")
+    st.markdown(f"[Click here if not redirected]({uri})")
+
     st.stop()
 
 
