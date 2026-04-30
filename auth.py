@@ -142,17 +142,23 @@ def require_login():
 
     st.session_state["oauth_state"] = state
 
-    # redirect
-    st.markdown(
-        f'<meta http-equiv="refresh" content="0; url={uri}">',
-        unsafe_allow_html=True
-    )
+    # prevent infinite redirect loop
+    if "auth_redirected" not in st.session_state:
+        st.session_state["auth_redirected"] = True
 
-    # fallback
-    st.markdown("Redirecting to login...")
-    st.markdown(f"[Click here if not redirected]({uri})")
+        st.markdown(
+            f'<meta http-equiv="refresh" content="0; url={uri}">',
+            unsafe_allow_html=True
+        )
 
-    st.stop()
+        st.markdown("Redirecting to login...")
+        st.markdown(f"[Click here if not redirected]({uri})")
+
+        st.stop()
+    else:
+        st.error("Login redirect failed. Please click below to continue.")
+        st.markdown(f"[Continue to login]({uri})")
+        st.stop()
 
 
 # -------------------------
