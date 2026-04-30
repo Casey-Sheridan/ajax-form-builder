@@ -100,8 +100,7 @@ def require_login():
     )
 
     uri, state = oauth.create_authorization_url(
-        AUTHORIZATION_ENDPOINT,
-        prompt="consent"
+        AUTHORIZATION_ENDPOINT
     )
 
     st.session_state["oauth_state"] = state
