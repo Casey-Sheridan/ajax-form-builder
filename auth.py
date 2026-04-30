@@ -4,6 +4,9 @@ import json
 from authlib.integrations.requests_client import OAuth2Session
 from streamlit_cookies_manager import EncryptedCookieManager
 
+from dotenv import load_dotenv
+load_dotenv(True)
+
 # -------------------------
 # CONFIG
 # -------------------------
