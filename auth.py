@@ -88,9 +88,12 @@ def require_login():
     cookies = get_cookie_manager()
 
     if not cookies.ready():
-        st.markdown("Loading session...")
-        st.session_state["_cookie_init"] = True
-        st.rerun()
+        if not st.session_state.get("_cookie_init"):
+            st.session_state["_cookie_init"] = True
+            st.rerun()
+        else:
+            st.error("Session failed to initialize cookies.")
+            st.stop()
 
     # -------------------------
     # RESTORE FROM COOKIE
