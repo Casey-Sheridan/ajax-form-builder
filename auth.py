@@ -1,5 +1,6 @@
 import streamlit as st
 import os
+import json
 from authlib.integrations.requests_client import OAuth2Session
 from streamlit_cookies_manager import EncryptedCookieManager
 
@@ -8,9 +9,9 @@ from streamlit_cookies_manager import EncryptedCookieManager
 # -------------------------
 CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
-REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "https://ajaxflyers.rotecode.com")
+REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI")
 
-COOKIE_SECRET = os.getenv("COOKIE_SECRET", "dev_secret_change_me")
+COOKIE_SECRET = os.getenv("COOKIE_SECRET")
 
 AUTHORIZATION_ENDPOINT = "https://accounts.google.com/o/oauth2/auth"
 TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
@@ -132,7 +133,7 @@ def require_login():
 
     if "user" not in st.session_state:
         if "user" in cookies and cookies["user"]:
-            st.session_state["user"] = cookies["user"]
+            st.session_state["user"] = json.loads(cookies["user"])
 
     # -------------------------
     # ALREADY LOGGED IN
@@ -151,7 +152,7 @@ def require_login():
 
     if result:
         st.session_state["user"] = result
-        cookies["user"] = result
+        cookies["user"] = json.dumps(result)
         cookies.save()
 
         st.query_params.clear()
