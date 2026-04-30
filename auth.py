@@ -1,8 +1,6 @@
 import streamlit as st
 import os
-import json
 from authlib.integrations.requests_client import OAuth2Session
-from streamlit_cookies_manager import EncryptedCookieManager
 
 # -------------------------
 # CONFIG
@@ -10,7 +8,6 @@ from streamlit_cookies_manager import EncryptedCookieManager
 CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI")
-COOKIE_SECRET = os.getenv("COOKIE_SECRET")
 
 AUTHORIZATION_ENDPOINT = "https://accounts.google.com/o/oauth2/auth"
 TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
@@ -18,18 +15,6 @@ USERINFO_ENDPOINT = "https://openidconnect.googleapis.com/v1/userinfo"
 
 SCOPE = "openid email profile"
 ALLOWED_DOMAIN = "ajax.systems"
-
-
-# -------------------------
-# COOKIE MANAGER (SESSION-BASED)
-# -------------------------
-def get_cookie_manager():
-    if "cookie_manager" not in st.session_state:
-        st.session_state["cookie_manager"] = EncryptedCookieManager(
-            prefix="flyer_app_",
-            password=COOKIE_SECRET
-        )
-    return st.session_state["cookie_manager"]
 
 
 # -------------------------
@@ -46,7 +31,7 @@ def _handle_callback():
         CLIENT_SECRET,
         scope=SCOPE,
         redirect_uri=REDIRECT_URI,
-        state=st.session_state.get("oauth_state")
+        state=st.session_state.get("oauth_state"),
     )
 
     try:
@@ -76,34 +61,11 @@ def require_login():
             st.session_state["user"] = {
                 "email": "dev@ajax.systems",
                 "name": "Local Dev",
-                "picture": "https://via.placeholder.com/40"
+                "picture": "https://via.placeholder.com/40",
             }
 
         st.sidebar.warning("Auth Disabled (Local Dev)")
         return st.session_state["user"]
-
-    # -------------------------
-    # INIT COOKIE MANAGER
-    # -------------------------
-    cookies = get_cookie_manager()
-
-    if not cookies.ready():
-        if not st.session_state.get("_cookie_init"):
-            st.session_state["_cookie_init"] = True
-            st.rerun()
-        else:
-            st.error("Session failed to initialize cookies.")
-            st.stop()
-
-    # -------------------------
-    # RESTORE FROM COOKIE
-    # -------------------------
-    if "user" not in st.session_state:
-        if "user" in cookies and cookies["user"]:
-            try:
-                st.session_state["user"] = json.loads(cookies["user"])
-            except Exception:
-                pass
 
     # -------------------------
     # ALREADY LOGGED IN
@@ -122,20 +84,19 @@ def require_login():
 
     if result:
         st.session_state["user"] = result
-        cookies["user"] = json.dumps(result)
-        cookies.save()
 
+        # clean URL
         st.query_params.clear()
         st.rerun()
 
     # -------------------------
-    # AUTO-LOGIN (redirect)
+    # AUTO-LOGIN (redirect once)
     # -------------------------
     oauth = OAuth2Session(
         CLIENT_ID,
         CLIENT_SECRET,
         scope=SCOPE,
-        redirect_uri=REDIRECT_URI
+        redirect_uri=REDIRECT_URI,
     )
 
     uri, state = oauth.create_authorization_url(
@@ -146,32 +107,28 @@ def require_login():
     st.session_state["oauth_state"] = state
 
     # prevent infinite redirect loop
-    if "auth_redirected" not in st.session_state:
+    if not st.session_state.get("auth_redirected"):
         st.session_state["auth_redirected"] = True
 
         st.markdown(
             f'<meta http-equiv="refresh" content="0; url={uri}">',
-            unsafe_allow_html=True
+            unsafe_allow_html=True,
         )
 
         st.markdown("Redirecting to login...")
         st.markdown(f"[Click here if not redirected]({uri})")
+        st.stop()
 
-        st.stop()
-    else:
-        st.error("Login redirect failed. Please click below to continue.")
-        st.markdown(f"[Continue to login]({uri})")
-        st.stop()
+    # fallback if redirect fails
+    st.error("Login redirect failed. Please click below.")
+    st.markdown(f"[Continue to login]({uri})")
+    st.stop()
 
 
 # -------------------------
 # LOGOUT
 # -------------------------
 def logout_button():
-    cookies = get_cookie_manager()
-
     if st.sidebar.button("Logout"):
         st.session_state.clear()
-        cookies["user"] = ""
-        cookies.save()
         st.rerun()
