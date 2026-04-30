@@ -99,9 +99,20 @@ def require_login():
         redirect_uri=REDIRECT_URI,
     )
 
-    uri, state = oauth.create_authorization_url(
-        AUTHORIZATION_ENDPOINT
-    )
+    prompt = None
+    if st.session_state.get("force_account_select"):
+        prompt = "select_account"
+        st.session_state.pop("force_account_select")
+
+    if prompt:
+        uri, state = oauth.create_authorization_url(
+            AUTHORIZATION_ENDPOINT,
+            prompt=prompt
+        )
+    else:
+        uri, state = oauth.create_authorization_url(
+            AUTHORIZATION_ENDPOINT
+        )
 
     st.session_state["oauth_state"] = state
 
@@ -130,4 +141,5 @@ def require_login():
 def logout_button():
     if st.sidebar.button("Logout"):
         st.session_state.clear()
+        st.session_state["force_account_select"] = True
         st.rerun()
