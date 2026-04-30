@@ -2,7 +2,6 @@ import streamlit as st
 st.set_page_config(page_title="Flyer Generator", layout="wide")
 
 import os
-import auth
 from dotenv import load_dotenv
 from PIL import Image, ImageDraw, ImageFont
 import qrcode
@@ -15,8 +14,8 @@ from datetime import date
 # -------------------------
 load_dotenv(override=True)
 
+import auth
 user = auth.require_login()
-
 
 # -------------------------
 # SIDEBAR USER PANEL
