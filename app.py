@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from PIL import Image, ImageDraw, ImageFont
 import qrcode
 import requests
+import json
 from io import BytesIO
 from datetime import date
 
@@ -42,6 +43,21 @@ FONT_DIR = os.path.join(BASE_DIR, "fonts")
 PARTNERS_FILE = os.path.join(BASE_DIR, "partners.txt")
 
 # -------------------------
+# TEMPLATES
+# -------------------------
+
+
+TEMPLATE_DIR = os.path.join(BASE_DIR, "templates")
+
+@st.cache_data
+def load_template(name="default.json"):
+    path = os.path.join(TEMPLATE_DIR, name)
+    with open(path, "r") as f:
+        return json.load(f)
+
+template = load_template()
+
+# -------------------------
 # SESSION STATE
 # -------------------------
 if "flyer_result" not in st.session_state:
@@ -55,6 +71,8 @@ def load_fonts():
     return {
         "bold": ImageFont.truetype(os.path.join(FONT_DIR, "LiberationSans-Bold.ttf"), 35),
         "regular": ImageFont.truetype(os.path.join(FONT_DIR, "LiberationSans-Regular.ttf"), 30),
+        "subtitle": ImageFont.truetype(os.path.join(FONT_DIR, "Orbitron-Regular.ttf"), 62),
+        "title": ImageFont.truetype(os.path.join(FONT_DIR, "Orbitron-Bold.ttf"), 72)
     }
 
 fonts = load_fonts()
@@ -100,7 +118,7 @@ def fuzzy_match_partner(text, partner_list):
             return p
 
     for p in partner_list:
-        if len(p) >= 3 and p.lower()[:3] in text:
+        if len(p) >= 3 and any(chunk in text for chunk in [p.lower()[:3], p.lower()[:4]]):
             return p
 
     return None
@@ -108,61 +126,82 @@ def fuzzy_match_partner(text, partner_list):
 # -------------------------
 # GENERATOR
 # -------------------------
-def generate_flyer(data):
+def generate_flyer(data, template):
     try:
-        img = Image.open(TEMPLATE_PATH).convert("RGB")
+        bg_path = os.path.join(BASE_DIR, template["background"])
+        img = Image.open(bg_path).convert("RGB")
         draw = ImageDraw.Draw(img)
 
-        white, gray = (255, 255, 255), (180, 180, 180)
+        colors = {
+            "white": (255, 255, 255),
+            "gray": (180, 180, 180)
+        }
 
-        tx, ty = 130, 545
-        qx, qy = 887, 1381
+        # -------------------------
+        # RENDER ELEMENTS
+        # -------------------------
+        for el in template["elements"]:
 
-        draw.text((tx, ty), data["date"], font=fonts["bold"], fill=white)
-        draw.text((tx, ty + 50), data["time"], font=fonts["regular"], fill=gray)
-        draw.text((tx, ty + 110), data["location"], font=fonts["bold"], fill=white)
-        draw.text((tx, ty + 160), data["address1"], font=fonts["regular"], fill=white)
-        draw.text((tx, ty + 200), data["address2"], font=fonts["regular"], fill=white)
+            if el["type"] == "text":
+                value = el.get("value") or data.get(el.get("source", ""), "")
+                draw.text(
+                    (el["x"], el["y"]),
+                    value,
+                    font=fonts[el["font"]],
+                    fill=colors[el["color"]]
+                )
 
-        # LOGO
-        logo_img = None
+            elif el["type"] == "logo":
+                logo_img = None
 
-        try:
-            if data["uploaded_logo"] is not None:
-                logo_img = Image.open(data["uploaded_logo"]).convert("RGBA")
+                try:
+                    if data["uploaded_logo"] is not None:
+                        logo_img = Image.open(data["uploaded_logo"]).convert("RGBA")
 
-            elif data["partner"] == "Custom" and data["custom_logo_url"]:
-                r = requests.get(data["custom_logo_url"], timeout=5)
-                r.raise_for_status()
-                logo_img = Image.open(BytesIO(r.content)).convert("RGBA")
+                    elif data["partner"] == "Custom" and data["custom_logo_url"]:
+                        r = requests.get(data["custom_logo_url"], timeout=5)
+                        r.raise_for_status()
+                        logo_img = Image.open(BytesIO(r.content)).convert("RGBA")
 
-            elif data["partner"] != "Custom":
-                logo_path = os.path.join(LOGO_DIR, f"{data['partner'].lower()}.png")
-                if os.path.exists(logo_path):
-                    logo_img = Image.open(logo_path).convert("RGBA")
+                    elif data["partner"] != "Custom":
+                        logo_path = os.path.join(LOGO_DIR, f"{data['partner'].lower()}.png")
+                        if os.path.exists(logo_path):
+                            logo_img = Image.open(logo_path).convert("RGBA")
 
-        except:
-            pass
+                except:
+                    pass
 
-        if logo_img:
-            logo_img.thumbnail((350, 75))
-            img.paste(logo_img, (280, 1450 - logo_img.height // 2), logo_img)
+                if logo_img:
+                    logo_img.thumbnail((el["max_width"], el["max_height"]))
+                    img.paste(
+                        logo_img,
+                        (el["x"], el["y"] - logo_img.height // 2),
+                        logo_img
+                    )
 
-        # QR
-        qr = qrcode.QRCode(
-            version=None,
-            error_correction=qrcode.constants.ERROR_CORRECT_Q,
-            box_size=10,
-            border=1
-        )
+            elif el["type"] == "qr":
+                link = data.get(el["source"], "")
 
-        qr.add_data(data["registration_link"])
-        qr.make(fit=True)
+                if not link:
+                    raise ValueError("Registration link is required.")
 
-        qr_img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
-        qr_img = qr_img.resize((140, 140))
+                qr = qrcode.QRCode(
+                    version=None,
+                    error_correction=qrcode.constants.ERROR_CORRECT_Q,
+                    box_size=10,
+                    border=1
+                )
 
-        img.paste(qr_img, (qx - qr_img.width // 2, qy - qr_img.height // 2))
+                qr.add_data(link)
+                qr.make(fit=True)
+
+                qr_img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
+                qr_img = qr_img.resize((el["size"], el["size"]))
+
+                img.paste(
+                    qr_img,
+                    (el["x"] - qr_img.width // 2, el["y"] - qr_img.height // 2)
+                )
 
         buffer = BytesIO()
         img.save(buffer, format="PNG")
@@ -199,17 +238,13 @@ with col_form:
     # TIME PICKERS
     times = []
 
-    for hour in range(6, 22):  # 6 AM → 10 PM
+    for hour in range(6, 23):  # include 10 PM
         for minute in [0, 30]:
-            h = hour
-            suffix = "AM" if h < 12 else "PM"
-
-            display_hour = h if 1 <= h <= 12 else (h - 12 if h > 12 else 12)
-
+            if hour == 22 and minute == 30:
+                continue
+            suffix = "AM" if hour < 12 else "PM"
+            display_hour = hour if 1 <= hour <= 12 else (hour - 12 if hour > 12 else 12)
             times.append(f"{display_hour}:{minute:02d} {suffix}")
-
-    # Add 10:00 PM explicitly (since range stops before 22:30)
-    times.append("10:00 PM")
 
     col_t1, col_t2 = st.columns(2)
     with col_t1:
@@ -247,7 +282,7 @@ with col_form:
 # -------------------------
 # GENERATE
 # -------------------------
-if generate:
+if "generate" in locals() and generate:
 
     if partner == "Custom" and not (uploaded_logo or custom_logo_url):
         st.error("Custom partner requires a logo.")
@@ -266,7 +301,7 @@ if generate:
     }
 
     with st.spinner("Generating flyer..."):
-        result, error = generate_flyer(data)
+        result, error = generate_flyer(data, template)
 
     if error:
         st.error(error)
@@ -278,7 +313,7 @@ if generate:
 # -------------------------
 if st.session_state.flyer_result:
 
-    with col_preview:
+     with col_preview:
         st.markdown("### Preview")
 
         st.download_button(

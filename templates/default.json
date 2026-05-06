@@ -1,0 +1,83 @@
+{
+  "background": "master_template.png",
+  "elements": [
+    {
+      "type": "text",
+      "value": "PRODUCT",
+      "x": 30,
+      "y": 65,
+      "font": "title",
+      "color": "white"
+    },
+    {
+      "type": "text",
+      "value": "SHOWCASE",
+      "x": 30,
+      "y": 140,
+      "font": "title",
+      "color": "white"
+    },
+    {
+      "type": "text",
+      "value": "AND TRAINING",
+      "x": 30,
+      "y": 215,
+      "font": "subtitle",
+      "color": "white"
+    },
+    {
+      "type": "text",
+      "source": "date",
+      "x": 130,
+      "y": 545,
+      "font": "bold",
+      "color": "white"
+    },
+    {
+      "type": "text",
+      "source": "time",
+      "x": 130,
+      "y": 595,
+      "font": "regular",
+      "color": "gray"
+    },
+    {
+      "type": "text",
+      "source": "location",
+      "x": 130,
+      "y": 655,
+      "font": "bold",
+      "color": "white"
+    },
+    {
+      "type": "text",
+      "source": "address1",
+      "x": 130,
+      "y": 705,
+      "font": "regular",
+      "color": "white"
+    },
+    {
+      "type": "text",
+      "source": "address2",
+      "x": 130,
+      "y": 745,
+      "font": "regular",
+      "color": "white"
+    },
+    {
+      "type": "logo",
+      "x": 280,
+      "y": 1450,
+      "max_width": 350,
+      "max_height": 75
+    },
+    {
+      "type": "qr",
+      "source": "registration_link",
+      "x": 887,
+      "y": 1381,
+      "size": 140
+    }
+  ]
+}

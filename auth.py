@@ -139,7 +139,19 @@ def require_login():
 # LOGOUT
 # -------------------------
 def logout_button():
-    if st.sidebar.button("Logout"):
-        st.session_state.clear()
-        st.session_state["force_account_select"] = True
-        st.rerun()
+
+    col1, col2 = st.sidebar.columns(2)
+
+    with col1:
+        if st.button("Sign Out"):
+            st.session_state.clear()
+            st.session_state["force_account_select"] = True
+            st.rerun()
+
+    with col2:
+        if st.button("Switch User"):
+            # keep session but force account picker
+            st.session_state.pop("user", None)
+            st.session_state["force_account_select"] = True
+            st.session_state.pop("auth_redirected", None)
+            st.rerun()
