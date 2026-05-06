@@ -2,16 +2,16 @@ import streamlit as st
 st.set_page_config(page_title="Flyer Generator", layout="wide")
 
 import os
+import json
 from dotenv import load_dotenv
 from PIL import Image, ImageDraw, ImageFont
 import qrcode
 import requests
-import json
 from io import BytesIO
 from datetime import date
 
 # -------------------------
-# LOAD ENV (safe placement)
+# LOAD ENV
 # -------------------------
 load_dotenv(override=True)
 
@@ -22,11 +22,9 @@ user = auth.require_login()
 # SIDEBAR USER PANEL
 # -------------------------
 st.sidebar.markdown("### 👤 User")
-
-st.sidebar.image(user["picture"], width=50)
-st.sidebar.markdown(f"**{user['name']}**")
+st.sidebar.image(user.get("picture_url", "https://via.placeholder.com/50"), width=50)
+st.sidebar.markdown(f"**{user.get('name', 'Unknown User')}**")
 st.sidebar.caption(user["email"])
-
 st.sidebar.success("Authenticated")
 st.sidebar.divider()
 
@@ -35,27 +33,11 @@ auth.logout_button()
 # -------------------------
 # CONFIG
 # -------------------------
-
 BASE_DIR = os.path.dirname(__file__)
-TEMPLATE_PATH = os.path.join(BASE_DIR, "master_template.png")
+TEMPLATE_DIR = os.path.join(BASE_DIR, "templates")
 LOGO_DIR = os.path.join(BASE_DIR, "logos")
 FONT_DIR = os.path.join(BASE_DIR, "fonts")
 PARTNERS_FILE = os.path.join(BASE_DIR, "partners.txt")
-
-# -------------------------
-# TEMPLATES
-# -------------------------
-
-
-TEMPLATE_DIR = os.path.join(BASE_DIR, "templates")
-
-@st.cache_data
-def load_template(name="default.json"):
-    path = os.path.join(TEMPLATE_DIR, name)
-    with open(path, "r") as f:
-        return json.load(f)
-
-template = load_template()
 
 # -------------------------
 # SESSION STATE
@@ -93,6 +75,52 @@ def load_partners():
 partners = load_partners()
 
 # -------------------------
+# TEMPLATE LOADING
+# -------------------------
+@st.cache_data
+def list_templates():
+    templates = []
+
+    for d in os.listdir(TEMPLATE_DIR):
+        path = os.path.join(TEMPLATE_DIR, d)
+
+        if (
+            not d.startswith(".")
+            and os.path.isdir(path)
+            and os.path.exists(os.path.join(path, "template.json"))
+        ):
+            templates.append(d)
+
+    templates.sort()
+    return templates
+
+
+@st.cache_data
+def load_template(name):
+    template_path = os.path.join(TEMPLATE_DIR, name, "template.json")
+
+    with open(template_path, "r") as f:
+        template = json.load(f)
+
+    template["_base_path"] = os.path.join(TEMPLATE_DIR, name)
+    return template
+
+
+templates = list_templates()
+
+if not templates:
+    st.error("No templates found.")
+    st.stop()
+
+selected_template = st.selectbox(
+    "Template",
+    templates,
+    format_func=lambda x: x.replace("_", " ").title()
+)
+
+template = load_template(selected_template)
+
+# -------------------------
 # HELPERS
 # -------------------------
 def ordinal(n):
@@ -118,7 +146,7 @@ def fuzzy_match_partner(text, partner_list):
             return p
 
     for p in partner_list:
-        if len(p) >= 3 and any(chunk in text for chunk in [p.lower()[:3], p.lower()[:4]]):
+        if len(p) >= 3 and p.lower()[:3] in text:
             return p
 
     return None
@@ -128,7 +156,7 @@ def fuzzy_match_partner(text, partner_list):
 # -------------------------
 def generate_flyer(data, template):
     try:
-        bg_path = os.path.join(BASE_DIR, template["background"])
+        bg_path = os.path.join(template["_base_path"], template["background"])
         img = Image.open(bg_path).convert("RGB")
         draw = ImageDraw.Draw(img)
 
@@ -137,9 +165,6 @@ def generate_flyer(data, template):
             "gray": (180, 180, 180)
         }
 
-        # -------------------------
-        # RENDER ELEMENTS
-        # -------------------------
         for el in template["elements"]:
 
             if el["type"] == "text":
@@ -220,28 +245,24 @@ st.title("AJAX Training Flyer Generator")
 col_form, col_preview = st.columns([1, 1])
 
 with col_form:
-
     location = st.text_input("Location Name")
-
     guessed = fuzzy_match_partner(location, partners)
 
     if guessed:
         st.caption(f"Suggested partner: {guessed}")
 
     full_address = st.text_input("Full Address")
-
     address1, address2 = split_address(full_address)
 
     selected_date = st.date_input("Date", value=date.today())
     prettydate = format_pretty_date(selected_date)
 
-    # TIME PICKERS
     times = []
-
-    for hour in range(6, 23):  # include 10 PM
+    for hour in range(6, 23):
         for minute in [0, 30]:
             if hour == 22 and minute == 30:
                 continue
+
             suffix = "AM" if hour < 12 else "PM"
             display_hour = hour if 1 <= hour <= 12 else (hour - 12 if hour > 12 else 12)
             times.append(f"{display_hour}:{minute:02d} {suffix}")
@@ -309,18 +330,48 @@ if "generate" in locals() and generate:
         st.session_state.flyer_result = result
 
 # -------------------------
-# PREVIEW
+# PREVIEW (Overlay Button)
 # -------------------------
 if st.session_state.flyer_result:
 
-     with col_preview:
+    with col_preview:
+
+        st.markdown("""
+        <style>
+        .image-container {
+            position: relative;
+            display: inline-block;
+        }
+
+        .download-overlay {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.2s ease-in-out;
+        }
+
+        .image-container:hover .download-overlay {
+            opacity: 1;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+
         st.markdown("### Preview")
 
+        st.markdown('<div class="image-container">', unsafe_allow_html=True)
+
+        st.markdown('<div class="download-overlay">', unsafe_allow_html=True)
         st.download_button(
-            "Download",
+            "⬇ Download",
             data=st.session_state.flyer_result,
             file_name="Final_Flyer.png",
-            mime="image/png"
+            mime="image/png",
+            key="overlay_download"
         )
+        st.markdown('</div>', unsafe_allow_html=True)
 
         st.image(st.session_state.flyer_result, width=400)
+
+        st.markdown('</div>', unsafe_allow_html=True)

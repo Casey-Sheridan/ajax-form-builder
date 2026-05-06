@@ -1,10 +1,14 @@
-import streamlit as st
 import os
+import streamlit as st
 from authlib.integrations.requests_client import OAuth2Session
 
-# -------------------------
+from db import fetch_one, execute
+from session import create_session_token, sign_session, unsign_session
+
+
+# =========================================================
 # CONFIG
-# -------------------------
+# =========================================================
 CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI")
@@ -17,10 +21,66 @@ SCOPE = "openid email profile"
 ALLOWED_DOMAIN = "ajax.systems"
 
 
-# -------------------------
-# HANDLE CALLBACK
-# -------------------------
-def _handle_callback():
+# =========================================================
+# COOKIE SHIM (Streamlit-safe)
+# =========================================================
+def get_cookie():
+    if "cookie" not in st.session_state:
+        st.session_state.cookie = {}
+    return st.session_state.cookie
+
+
+# =========================================================
+# DB SESSION OPS
+# =========================================================
+def db_create_session(session_id, email):
+    execute(
+        "INSERT INTO sessions (session_id, user_email, expires_at) VALUES (?, ?, NULL)",
+        (session_id, email)
+    )
+
+
+def db_get_session(session_id):
+    return fetch_one(
+        "SELECT * FROM sessions WHERE session_id = ?",
+        (session_id,)
+    )
+
+
+def db_delete_session(session_id):
+    execute(
+        "DELETE FROM sessions WHERE session_id = ?",
+        (session_id,)
+    )
+
+
+# =========================================================
+# USER UPSERT
+# =========================================================
+def get_or_create_user(user):
+    existing = fetch_one(
+        "SELECT * FROM users WHERE email = ?",
+        (user["email"],)
+    )
+
+    if existing:
+        return existing
+
+    execute(
+        "INSERT INTO users (email, name, picture_url) VALUES (?, ?, ?)",
+        (user["email"], user.get("name"), user.get("picture"))
+    )
+
+    return fetch_one(
+        "SELECT * FROM users WHERE email = ?",
+        (user["email"],)
+    )
+
+
+# =========================================================
+# OAUTH CALLBACK
+# =========================================================
+def handle_callback():
     params = st.query_params
 
     if "code" not in params:
@@ -48,110 +108,132 @@ def _handle_callback():
         return None
 
 
-# -------------------------
+# =========================================================
+# SESSION RESTORE (KEY FIX)
+# =========================================================
+def restore_session():
+    cookie = get_cookie()
+    signed = cookie.get("session")
+
+    if not signed:
+        return None
+
+    session_id = unsign_session(signed)
+
+    if not session_id:
+        return None
+
+    session = db_get_session(session_id)
+
+    if not session:
+        return None
+
+    user = fetch_one(
+        "SELECT * FROM users WHERE email = ?",
+        (session["user_email"],)
+    )
+
+    if user:
+        st.session_state["user"] = user
+        return user
+
+    return None
+
+
+# =========================================================
 # MAIN AUTH ENTRY
-# -------------------------
+# =========================================================
 def require_login():
 
     # -------------------------
-    # LOCAL DEV BYPASS
+    # DEV MODE
     # -------------------------
-    if os.getenv("AUTH_DISABLED") == "true":
+    if os.getenv("AUTH_DISABLED", "false") == "true":
         if "user" not in st.session_state:
             st.session_state["user"] = {
                 "email": "dev@ajax.systems",
                 "name": "Local Dev",
-                "picture": "https://via.placeholder.com/40",
+                "picture_url": "https://via.placeholder.com/40"
             }
 
-        st.sidebar.warning("Auth Disabled (Local Dev)")
+        st.sidebar.warning("Auth Disabled (Dev Mode)")
         return st.session_state["user"]
 
     # -------------------------
-    # ALREADY LOGGED IN
+    # RESTORE SESSION FIRST (CRITICAL FIX)
     # -------------------------
+    if "user" not in st.session_state:
+        restored = restore_session()
+        if restored:
+            return restored
+
     if "user" in st.session_state:
         return st.session_state["user"]
 
     # -------------------------
-    # HANDLE OAUTH CALLBACK
+    # CALLBACK
     # -------------------------
-    result = _handle_callback()
+    result = handle_callback()
 
     if result == "unauthorized":
-        st.error("Access restricted to ajax.systems accounts.")
+        st.error("Unauthorized domain")
         st.stop()
 
     if result:
-        st.session_state["user"] = result
+        user = get_or_create_user(result)
 
-        # clean URL
+        session_id = create_session_token(user["email"])
+        db_create_session(session_id, user["email"])
+
+        cookie = get_cookie()
+        cookie["session"] = sign_session(session_id)
+
+        st.session_state["user"] = user
+
         st.query_params.clear()
         st.rerun()
 
     # -------------------------
-    # AUTO-LOGIN (redirect once)
+    # LOGIN REDIRECT
     # -------------------------
     oauth = OAuth2Session(
         CLIENT_ID,
         CLIENT_SECRET,
         scope=SCOPE,
-        redirect_uri=REDIRECT_URI,
+        redirect_uri=REDIRECT_URI
     )
 
-    prompt = None
-    if st.session_state.get("force_account_select"):
-        prompt = "select_account"
-        st.session_state.pop("force_account_select")
-
-    if prompt:
-        uri, state = oauth.create_authorization_url(
-            AUTHORIZATION_ENDPOINT,
-            prompt=prompt
-        )
-    else:
-        uri, state = oauth.create_authorization_url(
-            AUTHORIZATION_ENDPOINT
-        )
-
+    uri, state = oauth.create_authorization_url(AUTHORIZATION_ENDPOINT)
     st.session_state["oauth_state"] = state
 
-    # prevent infinite redirect loop
-    if not st.session_state.get("auth_redirected"):
-        st.session_state["auth_redirected"] = True
-
-        st.markdown(
-            f'<meta http-equiv="refresh" content="0; url={uri}">',
-            unsafe_allow_html=True,
-        )
-
-        st.markdown("Redirecting to login...")
-        st.markdown(f"[Click here if not redirected]({uri})")
-        st.stop()
-
-    # fallback if redirect fails
-    st.error("Login redirect failed. Please click below.")
-    st.markdown(f"[Continue to login]({uri})")
+    st.markdown(f"[Login with Google]({uri})")
     st.stop()
 
 
-# -------------------------
-# LOGOUT
-# -------------------------
+# =========================================================
+# LOGOUT / SWITCH USER
+# =========================================================
 def logout_button():
 
     col1, col2 = st.sidebar.columns(2)
+    cookie = get_cookie()
 
     with col1:
         if st.button("Sign Out"):
+            signed = cookie.get("session")
+
+            if signed:
+                session_id = unsign_session(signed)
+                if session_id:
+                    db_delete_session(session_id)
+
+            cookie.clear()
             st.session_state.clear()
-            st.session_state["force_account_select"] = True
             st.rerun()
 
     with col2:
         if st.button("Switch User"):
-            # keep session but force account picker
+            cookie.pop("session", None)
             st.session_state.pop("user", None)
-            st.session_state["force_account_select"] = True
             st.session_state.pop("auth_redirected", None)
             st.rerun()
