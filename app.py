@@ -9,6 +9,7 @@ import qrcode
 import requests
 from io import BytesIO
 from datetime import date
+from db import fetch_all, create_template, get_templates
 
 # -------------------------
 # LOAD ENV
@@ -16,19 +17,173 @@ from datetime import date
 load_dotenv(override=True)
 
 import auth
+from auth import is_admin
 user = auth.require_login()
 
 # -------------------------
 # SIDEBAR USER PANEL
 # -------------------------
-st.sidebar.markdown("### 👤 User")
-st.sidebar.image(user.get("picture_url", "https://via.placeholder.com/50"), width=50)
-st.sidebar.markdown(f"**{user.get('name', 'Unknown User')}**")
-st.sidebar.caption(user["email"])
-st.sidebar.success("Authenticated")
+is_admin_flag = user.get("is_admin", 0) == 1
+admin_tag = " (Admin)" if is_admin_flag else ""
+st.sidebar.markdown(f"### 👤 User{admin_tag}")
+st.sidebar.image(user.get("picture_url", "https://via.placeholder.com/40"), width=50)
+st.sidebar.markdown(f"**{user.get('name', '')}**")
+st.sidebar.caption(user.get("email", ""))
 st.sidebar.divider()
-
 auth.logout_button()
+
+# =========================================================
+# ADMIN TEMPLATE DESIGNER (STABLE v1)
+# =========================================================
+if is_admin(user):
+
+    st.sidebar.markdown("## 🎨 Template Designer")
+
+    # -------------------------
+    # INIT STATE (NEVER RESET)
+    # -------------------------
+    if "layout_builder" not in st.session_state:
+        st.session_state.layout_builder = {
+            "background": None,
+            "elements": []
+        }
+
+    layout = st.session_state.layout_builder
+
+    # =========================
+    # TWO-COLUMN SIDEBAR LAYOUT
+    # =========================
+    col_left, col_right = st.sidebar.columns(2)
+
+    # -------------------------
+    # LEFT: CONTROLS
+    # -------------------------
+    with col_left:
+
+        st.markdown("### Controls")
+
+        bg_file = st.file_uploader(
+            "Background",
+            type=["png", "jpg", "jpeg"],
+            key="tpl_bg"
+        )
+
+        if bg_file is not None:
+            layout["background"] = bg_file.name
+            st.session_state["tpl_bg_file"] = bg_file
+
+        field = st.selectbox(
+            "Field",
+            ["location", "date", "time", "address", "registration_link"],
+            key="tpl_field"
+        )
+
+        x = st.number_input("X", value=100, key="tpl_x")
+        y = st.number_input("Y", value=100, key="tpl_y")
+
+        if st.button("Add Element", key="tpl_add"):
+
+            layout["elements"].append({
+                "type": "text",
+                "field": field,
+                "x": int(x),
+                "y": int(y),
+                "font": "bold",
+                "size": 35,
+                "color": "white"
+            })
+
+            st.rerun()
+
+        if st.button("Save Template", key="tpl_save"):
+
+            import json
+            create_template(
+                name=f"template_{len(layout['elements'])}",
+                layout_json=json.dumps(layout),
+                created_by=user["email"]
+            )
+
+            st.success("Template saved")
+
+    # -------------------------
+    # RIGHT: PREVIEW (STABLE)
+    # -------------------------
+    with col_right:
+
+        st.markdown("### Preview")
+
+        if layout["background"]:
+
+            bg_file = st.session_state.get("tpl_bg_file")
+
+            if bg_file:
+                from PIL import Image, ImageDraw
+
+                img = Image.open(bg_file).convert("RGB")
+                draw = ImageDraw.Draw(img)
+
+                for el in layout["elements"]:
+                    draw.text(
+                        (el["x"], el["y"]),
+                        el["field"],
+                        fill="white"
+                    )
+
+                st.image(img, width=250)
+
+        else:
+            st.info("Upload a background to start preview")
+
+    # -------------------------
+    # DEBUG (OPTIONAL)
+    # -------------------------
+    with st.sidebar.expander("Debug Layout"):
+        st.json(layout)
+
+# =========================================================
+# TEMPLATE BUILDER (STEP 7)
+# =========================================================
+if is_admin(user):
+
+    st.sidebar.markdown("## 🧩 Templates")
+
+    with st.sidebar.expander("Create Template"):
+
+        tpl_name = st.text_input("Template Name")
+
+        layout_text = st.text_area(
+            "Layout JSON",
+            value='{"fields": [{"type": "text", "label": "Field 1"}]}',
+            height=160
+        )
+
+        if st.button("Save Template"):
+
+            try:
+                import json
+                parsed = json.loads(layout_text)
+
+                create_template(
+                    tpl_name,
+                    json.dumps(parsed),
+                    user["email"]
+                )
+
+                st.success("Template saved")
+                st.rerun()
+
+            except Exception as e:
+                st.error(f"Invalid JSON: {e}")
+
+    with st.sidebar.expander("View Templates"):
+
+        templates = get_templates()
+
+        for t in templates:
+            st.markdown(f"### {t['name']}")
+            st.caption(t.get("created_by", "unknown"))
+            st.code(t["layout_json"], language="json")
 
 # -------------------------
 # CONFIG
@@ -104,21 +259,6 @@ def load_template(name):
 
     template["_base_path"] = os.path.join(TEMPLATE_DIR, name)
     return template
-
-
-templates = list_templates()
-
-if not templates:
-    st.error("No templates found.")
-    st.stop()
-
-selected_template = st.selectbox(
-    "Template",
-    templates,
-    format_func=lambda x: x.replace("_", " ").title()
-)
-
-template = load_template(selected_template)
 
 # -------------------------
 # HELPERS
@@ -244,7 +384,44 @@ st.title("AJAX Training Flyer Generator")
 
 col_form, col_preview = st.columns([1, 1])
 
+from db import get_templates
+from template_engine import render_template
+import json
+
 with col_form:
+    templates = get_templates()
+
+    selected_template = st.selectbox(
+        "Template (optional)",
+        ["Default"] + [t["name"] for t in templates]
+    )
+
+    st.session_state["selected_template"] = selected_template
+
+    active_template = None
+
+    if selected_template != "Default":
+        active_template = next(
+            (t for t in templates if t["name"] == selected_template),
+            None
+        )
+
+    if active_template:
+
+        st.subheader("Template Mode")
+
+        try:
+            layout = json.loads(active_template["layout_json"])
+            form_data = render_template(layout)
+
+            st.session_state["template_data"] = form_data
+
+        except Exception as e:
+            st.error(f"Template error: {e}")
+
+    else:
+        st.info("Using default manual form")
+
     location = st.text_input("Location Name")
     guessed = fuzzy_match_partner(location, partners)
 
@@ -309,20 +486,62 @@ if "generate" in locals() and generate:
         st.error("Custom partner requires a logo.")
         st.stop()
 
-    data = {
-        "location": location,
-        "address1": address1,
-        "address2": address2,
-        "date": prettydate,
-        "time": time_range,
-        "partner": partner,
-        "uploaded_logo": uploaded_logo,
-        "custom_logo_url": custom_logo_url,
-        "registration_link": registration_link,
-    }
+    if "template_data" in st.session_state:
+        tpl_data = st.session_state["template_data"]
+
+        data = {
+            "location": tpl_data.get("location", location),
+            "address1": address1,
+            "address2": address2,
+            "date": prettydate,
+            "time": time_range,
+            "partner": partner,
+            "uploaded_logo": uploaded_logo,
+            "custom_logo_url": custom_logo_url,
+            "registration_link": registration_link,
+        }
+
+    else:
+        data = {
+            "location": location,
+            "address1": address1,
+            "address2": address2,
+            "date": prettydate,
+            "time": time_range,
+            "partner": partner,
+            "uploaded_logo": uploaded_logo,
+            "custom_logo_url": custom_logo_url,
+            "registration_link": registration_link,
+        }
 
     with st.spinner("Generating flyer..."):
-        result, error = generate_flyer(data, template)
+        from layout_renderer import render_flyer_from_layout
+        import json
+
+        templates = get_templates()
+
+        active = None
+        if st.session_state.get("selected_template"):
+
+            active = next(
+                (t for t in templates if t["name"] == st.session_state["selected_template"]),
+                None
+            )
+
+        if active:
+            layout = json.loads(active["layout_json"])
+
+            img = render_flyer_from_layout(layout, data, fonts)
+
+            buffer = BytesIO()
+            img.save(buffer, format="PNG")
+            buffer.seek(0)
+
+            result = buffer
+            error = None
+
+        else:
+            result, error = generate_flyer(data)
 
     if error:
         st.error(error)

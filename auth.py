@@ -22,7 +22,7 @@ ALLOWED_DOMAIN = "ajax.systems"
 
 
 # =========================================================
-# COOKIE SHIM (Streamlit-safe)
+# COOKIE
 # =========================================================
 def get_cookie():
     if "cookie" not in st.session_state:
@@ -31,7 +31,7 @@ def get_cookie():
 
 
 # =========================================================
-# DB SESSION OPS
+# DB HELPERS
 # =========================================================
 def db_create_session(session_id, email):
     execute(
@@ -54,9 +54,6 @@ def db_delete_session(session_id):
     )
 
 
-# =========================================================
-# USER UPSERT
-# =========================================================
 def get_or_create_user(user):
     existing = fetch_one(
         "SELECT * FROM users WHERE email = ?",
@@ -67,7 +64,7 @@ def get_or_create_user(user):
         return existing
 
     execute(
-        "INSERT INTO users (email, name, picture_url) VALUES (?, ?, ?)",
+        "INSERT INTO users (email, name, picture_url, is_admin) VALUES (?, ?, ?, 0)",
         (user["email"], user.get("name"), user.get("picture"))
     )
 
@@ -109,7 +106,7 @@ def handle_callback():
 
 
 # =========================================================
-# SESSION RESTORE (KEY FIX)
+# SESSION RESTORE
 # =========================================================
 def restore_session():
     cookie = get_cookie()
@@ -141,7 +138,7 @@ def restore_session():
 
 
 # =========================================================
-# MAIN AUTH ENTRY
+# MAIN AUTH
 # =========================================================
 def require_login():
 
@@ -149,18 +146,28 @@ def require_login():
     # DEV MODE
     # -------------------------
     if os.getenv("AUTH_DISABLED", "false") == "true":
-        if "user" not in st.session_state:
-            st.session_state["user"] = {
-                "email": "dev@ajax.systems",
-                "name": "Local Dev",
-                "picture_url": "https://via.placeholder.com/40"
-            }
 
-        st.sidebar.warning("Auth Disabled (Dev Mode)")
-        return st.session_state["user"]
+        dev_user = {
+            "email": "dev@ajax.systems",
+            "name": "Local Dev",
+            "picture": "https://via.placeholder.com/40"
+        }
+
+        user = get_or_create_user(dev_user)
+
+        session_id = create_session_token(user["email"])
+        db_create_session(session_id, user["email"])
+
+        cookie = get_cookie()
+        cookie["session"] = sign_session(session_id)
+
+        st.session_state["user"] = user
+
+        st.sidebar.warning("DEV MODE")
+        return user
 
     # -------------------------
-    # RESTORE SESSION FIRST (CRITICAL FIX)
+    # RESTORE
     # -------------------------
     if "user" not in st.session_state:
         restored = restore_session()
@@ -194,7 +201,7 @@ def require_login():
         st.rerun()
 
     # -------------------------
-    # LOGIN REDIRECT
+    # LOGIN
     # -------------------------
     oauth = OAuth2Session(
         CLIENT_ID,
@@ -211,7 +218,7 @@ def require_login():
 
 
 # =========================================================
-# LOGOUT / SWITCH USER
+# LOGOUT / SWITCH
 # =========================================================
 def logout_button():
 
@@ -235,5 +242,12 @@ def logout_button():
         if st.button("Switch User"):
             cookie.pop("session", None)
             st.session_state.pop("user", None)
-            st.session_state.pop("auth_redirected", None)
+            st.session_state.pop("oauth_state", None)
             st.rerun()
+
+
+# =========================================================
+# ADMIN CHECK
+# =========================================================
+def is_admin(user):
+    return user.get("is_admin", 0) == 1

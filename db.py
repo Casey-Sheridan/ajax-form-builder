@@ -136,3 +136,12 @@ def execute(query, params=None):
 
     cur.close()
     conn.close()
+
+def create_template(name, layout_json, created_by):
+    execute(
+        "INSERT INTO templates (name, layout_json, created_by) VALUES (?, ?, ?)",
+        (name, layout_json, created_by)
+    )
+
+def get_templates():
+    return fetch_all("SELECT * FROM templates ORDER BY created_at DESC")
