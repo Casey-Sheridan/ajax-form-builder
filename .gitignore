@@ -2,3 +2,6 @@
 .devcontainer
 *.pyc
 *.env
+.DS_Store
+*.db
+*.gitignore
