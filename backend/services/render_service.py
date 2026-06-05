@@ -69,6 +69,8 @@ def render_template(
     img = bg
     draw = ImageDraw.Draw(img)
 
+    field_map = {f.key: f for f in template.fields}
+
     for element in template.elements:
 
         if isinstance(element, TextElement):
@@ -78,7 +80,7 @@ def render_template(
             render_qr_element(img, element, data, scale_x, scale_y)
 
         elif isinstance(element, ImageElement):
-            render_image_element(img, element, data, scale_x, scale_y)
+            render_image_element(img, element, data, scale_x, scale_y, field_map)
 
     return img
 
@@ -215,25 +217,30 @@ def _render_wrap(
     wrapped_lines = _wrap_text(text, font, bb_width)
 
     # If even wrapped text doesn't fit vertically, shrink font size
-    total_height = sum(_measure_text_size(font, line)[1] for line in wrapped_lines) + max(0, len(wrapped_lines) - 1) * 2
-    if total_height > bb_height:
+    line_spacing = style.get("lineSpacing", 1.2)
+
+    def _total_height(lines, fnt):
+        heights = [_measure_text_size(fnt, ln)[1] for ln in lines]
+        return sum(round(h * line_spacing) for h in heights[:-1]) + (heights[-1] if heights else 0)
+
+    if _total_height(wrapped_lines, font) > bb_height:
         # Shrink until it fits
         max_size = font_size
         for try_size in range(max_size, 5, -1):
             try_font = load_font(font_name, try_size)
             try_lines = _wrap_text(text, try_font, bb_width)
-            try_height = sum(_measure_text_size(try_font, ln)[1] for ln in try_lines) + max(0, len(try_lines) - 1) * 2
-            if try_height <= bb_height:
+            if _total_height(try_lines, try_font) <= bb_height:
                 font = try_font
                 wrapped_lines = try_lines
                 break
 
     # Draw each line
+    line_spacing = style.get("lineSpacing", 1.2)
     current_y = y
     for line in wrapped_lines:
         _, line_h = _measure_text_size(font, line)
         draw.text((x, current_y), line, fill=color, font=font, align=align)
-        current_y += line_h + 2  # 2px leading
+        current_y += round(line_h * line_spacing)
 
 
 def _render_truncate(
@@ -303,47 +310,49 @@ def resolve_image_path(
     asset_type: Optional[str] = None
 ) -> Optional[Path]:
     """
-    Resolve an image path from a source value and asset type.
-    
-    Examples:
-    - resolve_image_path("SES", "logos") -> "assets/logos/ses.png"
-    - resolve_image_path("/path/to/image.png") -> "/path/to/image.png"
-    
-    Args:
-        source_value: The raw value (e.g., "SES", "my-photo.jpg", "/path/to/file.png")
-        asset_type: Optional asset category (e.g., "logos", "photos")
-    
-    Returns:
-        Path object if found, None otherwise
+    Resolve an image value to a filesystem Path.
+
+    Handles three cases in order:
+    1. Catalog-stored paths — relative to backend/ starting with 'assets/' or 'static/'
+       (e.g. "assets/logos/wesco.png", "static/catalog-assets/org/partners/uuid.png").
+       These come from catalog_items.image_path and are also returned as web URLs with a
+       leading '/' — both forms are accepted.
+    2. Legacy asset-lookup — source_value is a display name (e.g. "SES") and asset_type
+       names a folder under assets/ (e.g. "logos"). The value is normalised and the folder
+       is scanned for a matching file.
+    3. Bare filesystem path — tried as-is, then relative to assets/.
     """
     if not source_value:
         return None
-    
-    # If asset_type is specified, normalize the source value and look in assets folder
+
+    # Case 1 — catalog-stored path (with or without leading slash)
+    stripped = source_value.lstrip("/")
+    if stripped.startswith(("assets/", "static/")):
+        candidate = BASE_DIR / stripped
+        return candidate if candidate.exists() else None
+
+    # Case 2 — legacy name-based asset lookup
     if asset_type:
-        # Normalize: "SES" -> "ses", "My Logo" -> "my-logo"
-        normalized = source_value.lower().replace(" ", "-").replace("_", "-")
-        
-        # Try common image extensions
-        for ext in [".png", ".jpg", ".jpeg", ".gif", ".webp"]:
-            candidate = ASSETS_DIR / asset_type / f"{normalized}{ext}"
-            if candidate.exists():
-                return candidate
-        
+        lowered = source_value.lower()
+        normalized = lowered.replace(" ", "-").replace("_", "-")
+        candidates = [normalized]
+        if lowered != normalized:
+            candidates.append(lowered)  # also try with spaces preserved
+        for stem in candidates:
+            for ext in (".png", ".jpg", ".jpeg", ".gif", ".webp"):
+                candidate = ASSETS_DIR / asset_type / f"{stem}{ext}"
+                if candidate.exists():
+                    return candidate
         return None
-    
-    # If no asset_type, treat source_value as a direct path
+
+    # Case 3 — bare path
     image_path = Path(source_value)
-    
-    # Try as absolute/relative path first
     if image_path.exists():
         return image_path
-    
-    # Try relative to assets
     assets_path = ASSETS_DIR / source_value
     if assets_path.exists():
         return assets_path
-    
+
     return None
 
 
@@ -353,55 +362,60 @@ def render_image_element(
     data: Dict[str, Any],
     scale_x: float,
     scale_y: float,
+    field_map: Optional[Dict] = None,
 ):
-    """
-    Render an image element into the template.
-    
-    Supports two modes:
-    1. Direct image data: field value is a path string or PIL Image
-    2. Mapped field + asset type: source_field maps to data, asset_type determines path resolution
-    
-    Example template element:
-    {
-        "type": "image",
-        "field": "partner_logo",
-        "sourceField": "partner",
-        "assetType": "logos"
-    }
-    
-    With data:
-    {
-        "partner": "SES"
-    }
-    
-    Automatically resolves to: assets/logos/ses.png
-    """
-    # Determine the source value to use
+    # Element-level source_field/asset_type take priority (backwards compat).
+    # Fall back to field-descriptor derivation for templates configured via the editor.
     if element.source_field:
-        # Use mapped field for data lookup
         source_value = data.get(element.source_field)
+        effective_asset_type = element.asset_type
     else:
-        # Use the element field directly
-        source_value = data.get(element.field)
-    
+        descriptor = (field_map or {}).get(element.field)
+        derivation = descriptor.derivation if descriptor else None
+        if derivation and derivation.strategy == "asset-lookup":
+            source_value = data.get(derivation.source_field)
+            effective_asset_type = derivation.asset_type
+        else:
+            source_value = data.get(element.field)
+            effective_asset_type = element.asset_type
+
     if not source_value:
-        # No image provided, skip rendering
         return
-    
-    # Try to resolve image path
+
     image_obj = None
-    
+
     if isinstance(source_value, str):
-        # Resolve path using asset_type if provided
-        image_path = resolve_image_path(source_value, element.asset_type)
-        
+        image_path = resolve_image_path(source_value, effective_asset_type)
+
         if image_path:
             try:
                 image_obj = Image.open(image_path).convert("RGBA")
             except Exception:
                 return
         else:
-            return
+            # Primary lookup failed (e.g. custom/uploaded asset with no catalog entry).
+            # Check for a pre-resolved path stored in the render data under a conventional key.
+            # Frontend stores it as {source_field}_image or {element.field}_image after upload.
+            fallback_keys: list[str] = []
+            if element.source_field:
+                fallback_keys.append(element.source_field + "_image")
+            fallback_keys.append(element.field + "_image")
+            fallback_keys.append(element.field)
+
+            for key in fallback_keys:
+                url = data.get(key)
+                if url and isinstance(url, str):
+                    path = resolve_image_path(url)
+                    if path:
+                        try:
+                            image_obj = Image.open(path).convert("RGBA")
+                            break
+                        except Exception:
+                            continue
+
+            if not image_obj:
+                return
+
     elif isinstance(source_value, Image.Image):
         image_obj = source_value.convert("RGBA")
     else:

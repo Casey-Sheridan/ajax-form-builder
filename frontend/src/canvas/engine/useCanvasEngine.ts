@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type { TemplateDTO } from "../../api/templateApi";
+import type { TemplateDTO, FieldDescriptor } from "../../api/templateApi";
 import { templateApi } from "../../network/networkTemplateApi";
 import { requestQueue } from "../../network/requestQueue";
 
@@ -167,6 +167,25 @@ export function useCanvasEngine() {
             el.id === id ? { ...el, ...updates } : el
           ),
         };
+      });
+    },
+    []
+  );
+
+  // =====================================================
+  // UPDATE FIELD DESCRIPTOR (template-level, not element-level)
+  // Multiple elements can share a field key — this edits the one descriptor
+  // for that key, or inserts a new one if it doesn't exist yet.
+  // =====================================================
+  const updateFieldDescriptor = useCallback(
+    (key: string, patch: Partial<FieldDescriptor>) => {
+      setTemplate((prev) => {
+        if (!prev) return prev;
+        const exists = prev.fields.some((d) => d.key === key);
+        const fields = exists
+          ? prev.fields.map((d) => (d.key === key ? { ...d, ...patch } : d))
+          : [...prev.fields, { key, type: "text" as const, label: key, required: true, ...patch }];
+        return { ...prev, fields };
       });
     },
     []
@@ -580,6 +599,7 @@ export function useCanvasEngine() {
     updateElements,
     updateElement,
     updateElementLocal,
+    updateFieldDescriptor,
     commit,
 
     addElement,

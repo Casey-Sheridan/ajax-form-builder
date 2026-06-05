@@ -1,11 +1,13 @@
 import json
 import sqlite3
 import uuid
+from pathlib import Path
 from typing import List, Optional
 
 from models.template import TemplateModel
 
 DB_PATH = "templates.db"
+_BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 # ---------------------------
@@ -48,7 +50,113 @@ def init_db():
             """
         )
 
+        # ---------------------------
+        # MULTI-TENANT CATALOG TABLES
+        # ---------------------------
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS orgs (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                slug TEXT NOT NULL UNIQUE,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS catalogs (
+                id TEXT PRIMARY KEY,
+                org_id TEXT NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,
+                name TEXT NOT NULL,
+                label TEXT NOT NULL,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(org_id, name)
+            )
+            """
+        )
+
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS catalog_items (
+                id TEXT PRIMARY KEY,
+                catalog_id TEXT NOT NULL REFERENCES catalogs(id) ON DELETE CASCADE,
+                value TEXT NOT NULL,
+                label TEXT NOT NULL,
+                image_path TEXT,
+                meta TEXT NOT NULL DEFAULT '{}',
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(catalog_id, value)
+            )
+            """
+        )
+
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_catalog_items_lookup
+            ON catalog_items(catalog_id, sort_order ASC)
+            """
+        )
+
         conn.commit()
+
+        _seed_default_org(conn)
+
+
+def _seed_default_org(conn):
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM orgs")
+    if cursor.fetchone()[0] > 0:
+        return
+
+    default_id = str(uuid.uuid4())
+    cursor.execute(
+        "INSERT INTO orgs (id, name, slug) VALUES (?, ?, ?)",
+        (default_id, "Default Organization", "default"),
+    )
+
+    partners_file = _BASE_DIR / "partners.txt"
+    if not partners_file.exists():
+        conn.commit()
+        return
+
+    catalog_id = str(uuid.uuid4())
+    cursor.execute(
+        "INSERT INTO catalogs (id, org_id, name, label) VALUES (?, ?, ?, ?)",
+        (catalog_id, default_id, "partners", "Partners"),
+    )
+
+    logos_dir = _BASE_DIR / "assets" / "logos"
+    with open(partners_file) as f:
+        names = [line.strip() for line in f if line.strip()]
+
+    for i, name in enumerate(names):
+        normalized = (
+            name.lower()
+            .replace(" ", "-")
+            .replace("_", "-")
+            .replace("&", "and")
+            .replace("/", "-")
+        )
+        image_path = None
+        for ext in (".png", ".jpg", ".jpeg"):
+            candidate = logos_dir / f"{normalized}{ext}"
+            if candidate.exists():
+                image_path = f"assets/logos/{normalized}{ext}"
+                break
+
+        cursor.execute(
+            """
+            INSERT OR IGNORE INTO catalog_items
+                (id, catalog_id, value, label, image_path, sort_order)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (str(uuid.uuid4()), catalog_id, name, name, image_path, i),
+        )
+
+    conn.commit()
 
 
 # ---------------------------
@@ -92,12 +200,15 @@ def _row_to_template(row) -> TemplateModel:
             f"Keys found: {list(template_data.keys())}"
         )
 
+    fields = _safe_json_load(template_data.get("fields"), [])
+
     return TemplateModel.model_validate({
         "id": template_id,
         "name": template_name,
         "canvas": canvas,
         "background": template_data.get("background") or "",
         "elements": elements,
+        "fields": fields,
     })
 
 
@@ -151,9 +262,10 @@ def save_template(template: TemplateModel):
         "canvas": template.canvas.model_dump(),
         "background": template.background,
         "elements": [
-            e.model_dump() if hasattr(e, "model_dump") else e 
+            e.model_dump() if hasattr(e, "model_dump") else e
             for e in template.elements
         ],
+        "fields": [f.model_dump() for f in template.fields],
     })
 
     with sqlite3.connect(DB_PATH) as conn:

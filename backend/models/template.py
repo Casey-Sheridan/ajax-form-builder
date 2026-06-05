@@ -1,6 +1,40 @@
 from pydantic import BaseModel, Field, field_validator, Discriminator
 from typing import List, Union, Dict, Any, Literal, Annotated, Optional
 
+FieldType = Literal["text", "date", "time", "timeRange", "address", "url", "select", "image"]
+DateFormat = Literal["long", "long_no_year", "medium", "short", "numeric", "iso"]
+DerivationStrategy = Literal["asset-lookup", "fuzzy-catalog", "format"]
+
+
+class FieldDerivationModel(BaseModel):
+    strategy: DerivationStrategy
+    source_field: str = Field(alias="sourceField")
+    asset_type: Optional[str] = Field(default=None, alias="assetType")
+    catalog: Optional[str] = None
+    format_string: Optional[str] = Field(default=None, alias="format")
+
+    model_config = {"populate_by_name": True}
+
+
+class FieldDescriptor(BaseModel):
+    key: str
+    type: FieldType = "text"
+    label: str
+    required: bool = True
+    date_format: Optional[DateFormat] = None
+    placeholder: Optional[str] = None
+    derivation: Optional[FieldDerivationModel] = None
+    catalog: Optional[str] = None       # for type="select": names the catalog (org-scoped)
+    allow_custom: bool = False           # adds a free-text "Custom" option to the dropdown
+
+    @field_validator("type", mode="before")
+    @classmethod
+    def _normalize_legacy_type(cls, v):
+        # "partner" was the old name for a catalog-backed select field
+        if v == "partner":
+            return "select"
+        return v
+
 
 # ---------------------------
 # ELEMENT MODELS
@@ -152,6 +186,7 @@ class TemplateModel(BaseModel):
     canvas: CanvasModel
     background: str = ""
     elements: List[ElementModel] = Field(default_factory=list)
+    fields: List[FieldDescriptor] = Field(default_factory=list)
 
     # ---------------------------
     # ELEMENT NORMALIZATION HOOK

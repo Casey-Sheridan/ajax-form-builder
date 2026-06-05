@@ -1,15 +1,7 @@
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
-export interface FlyerData {
-  location: string;
-  address1: string;
-  address2: string;
-  date: string;
-  time: string;
-  partner: string;
-  registration_link: string;
-  [key: string]: string;
-}
+// Generic key-value map of field data — driven by the template's field descriptors
+export type FlyerData = Record<string, string>;
 
 export interface RenderRequest {
   template_id: string;
